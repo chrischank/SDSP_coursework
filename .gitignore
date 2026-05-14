@@ -164,6 +164,7 @@ cython_debug/
 /_site_micro/
 
 resources/
+data/
 .jupyter_cache
 geographic_data/buildings.geojson
 geographic_data/paris-map.html
