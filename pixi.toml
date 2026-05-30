@@ -43,6 +43,8 @@ ipykernel = "*"
 jupyter-cache = "*"
 jupyterlab = "*"
 pip = "*"
+h3 = ">=4.3.0,<5"
+marimo = ">=0.23.8,<0.24"
 
 [pypi-dependencies]
 kdepy = "*"
