@@ -49,3 +49,7 @@ ipywidgets = ">=8.1.8,<9"
 
 [pypi-dependencies]
 kdepy = "*"
+
+[feature.dev.dependencies]
+ruff = "*"
+ty = "*"
