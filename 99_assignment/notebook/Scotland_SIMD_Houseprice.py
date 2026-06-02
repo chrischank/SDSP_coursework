@@ -100,6 +100,13 @@ def _(Literal, Path, gpd, np, pd, simd2012_cols, simd2016_cols, simd2020_cols):
         diff: DIFF_PERIOD
         ) -> gpd.GeoDataFrame:
 
+        def _agg_dict(columns:list) -> dict:
+            agg_dict = {
+                f"{col}": "sum" for col in columns
+            }
+
+            return agg_dict
+
         if diff == "12-16":
             simd_geom_pastDF = gpd.read_file(simd_geom_past)
             simd_data_pastDF = pd.read_csv(simd_data_past,
@@ -116,11 +123,29 @@ def _(Literal, Path, gpd, np, pd, simd2012_cols, simd2016_cols, simd2020_cols):
             simd_pastDF =  simd_geom_pastDF.merge(simd_data_pastDF, left_on="DZ_CODE", right_on="Data Zone", how="left")
             simd_futureDF = simd_geom_futureDF.merge(simd_data_futureDF, left_on="DataZone", right_on="Data_Zone", how="left")
 
+            domain_cols2012 = [col for col in simd2012_cols if col not in ["Data Zone", "Local Authority Name", "Intermediate Geography name"]]
+            domain_cols2016 = [col for col in simd2016_cols if col not in ["Data_Zone", "Intermediate_Zone", "Council_area"]]
+
+
+            # Decile count weighted geometric dissolve to council area
+            # I need to do this because some council areas are larger
+            # Therefore pure aggregation will result in distorted stats
+
+            # Use a dummy count of 1 for dissolve so I get the count.
+            simd_pastDF["polygon_count"] = 1
+            DissolveSIMD_pastDF = simd_pastDF.dissolve(
+                by="Local Authority Name",
+                aggfunc=_agg_dict([*domain_cols2012, "polygon_count"])
+                )
+
+            for col in domain_cols2012:
+                DissolveSIMD_pastDF[f"weighted_{col}"] = DissolveSIMD_pastDF[f"{col}"] / DissolveSIMD_pastDF["polygon_count"]
+
         elif diff == "16-20":
             simd_cols_past, simd_cols_future = simd2016_cols, simd2020_cols
 
 
-        return simd_pastDF, simd_futureDF
+        return simd_pastDF, simd_futureDF, DissolveSIMD_pastDF
 
 
     return (simd_preprocessing,)
@@ -128,20 +153,46 @@ def _(Literal, Path, gpd, np, pd, simd2012_cols, simd2016_cols, simd2020_cols):
 
 @app.cell
 def _(DATA_RAW, Path, simd_preprocessing):
-    simd_2012DF, simd_2016DF = simd_preprocessing(
+    simd_2012DF, simd_2016DF, DissolveSIMD_2012DF= simd_preprocessing(
         simd_geom_past = Path(f"{DATA_RAW}/simd2012_withgeog/DZ_2011_EoR_Scotland.shp"),
         simd_data_past = Path(f"{DATA_RAW}/simd2012_withgeog/simd2012_data_00410767_plusintervals.csv"),
         simd_geom_future = Path(f"{DATA_RAW}/simd2016_withgeog/sc_dz_11.shp"),
         simd_data_future = Path(f"{DATA_RAW}/simd2016_withgeog/simd2016_withinds.csv"),
         diff = "12-16"
         )
+    return DissolveSIMD_2012DF, simd_2012DF, simd_2016DF
+
+
+@app.cell
+def _(DissolveSIMD_2012DF):
+    DissolveSIMD_2012DF
     return
 
 
 @app.cell
-def _(figsize, plt):
-    fig, axes = plt.subplots(1, 2, figsize(10, 20))
+def _(DissolveSIMD_2012DF, plt, simd_2012DF, simd_2016DF):
+    fig, axes = plt.subplots(1, 3, figsize = (30, 10))
+    simd_2012DF.plot(
+        "Income domain 2012 rank",
+        ax=axes[0],
+        legend=True
+    )
+    simd_2016DF.plot(
+        "Income_Domain_2016_Rank",
+        ax=axes[1],
+        legend=True
+    )
+    DissolveSIMD_2012DF.plot(
+        "weighted_Income domain 2012 rank",
+        ax=axes[2],
+        legend=True
+    )
 
+    return
+
+
+@app.cell
+def _():
     return
 
 
