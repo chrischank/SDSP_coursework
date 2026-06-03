@@ -251,47 +251,67 @@ def _(
 
 
 @app.cell
-def _(DATA_INTERMEDIATE, DATA_RAW, Path, simd_preprocessing):
-    simd_2012DF, simd_2016DF, DissolveSIMD_2012DF, DissolveSIMD_2016DF = (
-        simd_preprocessing(
-            simd_geom_past=Path(
-                f"{DATA_RAW}/simd2012_withgeog/DZ_2011_EoR_Scotland.shp"
-            ),
-            simd_data_past=Path(
-                f"{DATA_RAW}/simd2012_withgeog/simd2012_data_00410767_plusintervals.csv"
-            ),
-            simd_geom_future=Path(f"{DATA_RAW}/simd2016_withgeog/sc_dz_11.shp"),
-            simd_data_future=Path(
-                f"{DATA_RAW}/simd2016_withgeog/simd2016_withinds.csv"
-            ),
-            diff="12-16",
+def _(DATA_INTERMEDIATE, DATA_RAW, Path, gpd, simd_preprocessing):
+    if not Path(f"{DATA_INTERMEDIATE}/DissolveSIMD_2020.geojson").exists():
+        print("Running SIMD preprocessing")
+
+        simd_2012DF, simd_2016DF, DissolveSIMD_2012DF, DissolveSIMD_2016DF = (
+            simd_preprocessing(
+                simd_geom_past=Path(
+                    f"{DATA_RAW}/simd2012_withgeog/DZ_2011_EoR_Scotland.shp"
+                ),
+                simd_data_past=Path(
+                    f"{DATA_RAW}/simd2012_withgeog/simd2012_data_00410767_plusintervals.csv"
+                ),
+                simd_geom_future=Path(f"{DATA_RAW}/simd2016_withgeog/sc_dz_11.shp"),
+                simd_data_future=Path(
+                    f"{DATA_RAW}/simd2016_withgeog/simd2016_withinds.csv"
+                ),
+                diff="12-16",
+            )
         )
-    )
 
-    simd_2016DF, simd_2020DF, DissolveSIMD_2016DF, DissolveSIMD_2020DF = (
-        simd_preprocessing(
-            simd_geom_past=Path(f"{DATA_RAW}/simd2016_withgeog/sc_dz_11.shp"),
-            simd_data_past=Path(f"{DATA_RAW}/simd2016_withgeog/simd2016_withinds.csv"),
-            simd_geom_future=Path(f"{DATA_RAW}/simd2020_withgeog/sc_dz_11.shp"),
-            simd_data_future=Path(
-                f"{DATA_RAW}/simd2020_withgeog/simd2020_withinds.csv"
-            ),
-            diff="16-20",
+        simd_2016DF, simd_2020DF, DissolveSIMD_2016DF, DissolveSIMD_2020DF = (
+            simd_preprocessing(
+                simd_geom_past=Path(f"{DATA_RAW}/simd2016_withgeog/sc_dz_11.shp"),
+                simd_data_past=Path(f"{DATA_RAW}/simd2016_withgeog/simd2016_withinds.csv"),
+                simd_geom_future=Path(f"{DATA_RAW}/simd2020_withgeog/sc_dz_11.shp"),
+                simd_data_future=Path(
+                    f"{DATA_RAW}/simd2020_withgeog/simd2020_withinds.csv"
+                ),
+                diff="16-20",
+            )
         )
-    )
 
-    simd_2012DF.to_file(f"{DATA_INTERMEDIATE}/simd_2012.geojson", driver="GeoJSON")
-    simd_2016DF.to_file(f"{DATA_INTERMEDIATE}/simd_2016.geojson", driver="GeoJSON")
+        simd_2012DF.to_file(f"{DATA_INTERMEDIATE}/simd_2012.geojson", driver="GeoJSON")
+        simd_2016DF.to_file(f"{DATA_INTERMEDIATE}/simd_2016.geojson", driver="GeoJSON")
+        simd_2020DF.to_file(f"{DATA_INTERMEDIATE}/simd_2020.geojson", driver="GeoJSON")
 
-    DissolveSIMD_2012DF.to_file(
-        f"{DATA_INTERMEDIATE}/DissolveSIMD_2012.geojson", driver="GeoJSON"
-    )
-    DissolveSIMD_2016DF.to_file(
-        f"{DATA_INTERMEDIATE}/DissolveSIMD_2016.geojson", driver="GeoJSON"
-    )
-    DissolveSIMD_2020DF.to_file(
-        f"{DATA_INTERMEDIATE}/DissolveSIMD_2020.geojson", driver="GeoJSON"
-    )
+        DissolveSIMD_2012DF.to_file(
+            f"{DATA_INTERMEDIATE}/DissolveSIMD_2012.geojson", driver="GeoJSON"
+        )
+        DissolveSIMD_2016DF.to_file(
+            f"{DATA_INTERMEDIATE}/DissolveSIMD_2016.geojson", driver="GeoJSON"
+        )
+        DissolveSIMD_2020DF.to_file(
+            f"{DATA_INTERMEDIATE}/DissolveSIMD_2020.geojson", driver="GeoJSON"
+        )
+
+    else:
+        print("SIMD data already exists - skip preprocessing and read from intermediate")
+        simd_2012DF = gpd.read_file(f"{DATA_INTERMEDIATE}/simd_2012.geojson")
+        simd_2016DF = gpd.read_file(f"{DATA_INTERMEDIATE}/simd_2016.geojson")
+        simd_2020DF = gpd.read_file(f"{DATA_INTERMEDIATE}/simd_2020.geojson")
+
+        DissolveSIMD_2012DF = gpd.read_file(
+            f"{DATA_INTERMEDIATE}/DissolveSIMD_2012.geojson"
+        )
+        DissolveSIMD_2016DF = gpd.read_file(
+            f"{DATA_INTERMEDIATE}/DissolveSIMD_2016.geojson"
+        )
+        DissolveSIMD_2020DF = gpd.read_file(
+            f"{DATA_INTERMEDIATE}/DissolveSIMD_2020.geojson"
+        )
     return (
         DissolveSIMD_2012DF,
         DissolveSIMD_2016DF,
