@@ -17,10 +17,11 @@ def _():
     ###############################
     # Notebook for SPDS Assessment#
     # Maintainer: Christopher Chan#
-    # Version: 0.0.3              #
+    # Version: 0.0.4              #
     # Date: 2026-06-06            #
     ###############################
 
+    import re
     import sys
     import esda
     import numpy as np
@@ -28,12 +29,19 @@ def _():
     import geopandas as gpd
     import matplotlib.pyplot as plt
     import contextily as cx
+    import seaborn as sns
 
     from pathlib import Path
-    from typing import Literal
+    from libpysal import graph
+    from typing import Literal, Optional
 
     sys.path.append("..")
-    from src.dictionary import SIMD_DOMAIN_2012, SIMD_DOMAIN_2016, SIMD_DOMAIN_2020
+    from src.dictionary import (
+        COUNCIL_ALIGNMENT,
+        SIMD_DOMAIN_2012,
+        SIMD_DOMAIN_2016,
+        SIMD_DOMAIN_2020,
+    )
 
     DATA_RAW = Path("../data/01_raw")
     Path("../data/02_intermediate").mkdir(parents=True, exist_ok=True)
@@ -41,9 +49,11 @@ def _():
     DATA_INTERMEDIATE = Path("../data/02_intermediate")
     DATA_FEATURE = Path("../data/03_feature")
     return (
+        COUNCIL_ALIGNMENT,
         DATA_INTERMEDIATE,
         DATA_RAW,
         Literal,
+        Optional,
         Path,
         SIMD_DOMAIN_2012,
         SIMD_DOMAIN_2016,
@@ -51,9 +61,12 @@ def _():
         cx,
         esda,
         gpd,
+        graph,
         np,
         pd,
         plt,
+        re,
+        sns,
     )
 
 
@@ -76,6 +89,7 @@ def _(mo):
 
 @app.cell
 def _(
+    COUNCIL_ALIGNMENT,
     Literal,
     Path,
     SIMD_DOMAIN_2012,
@@ -144,6 +158,7 @@ def _(
             simd_data_futureDF = pd.read_csv(
                 simd_data_future,
                 usecols=[*SIMD_DOMAIN_2016.keys()],
+                thousands=",",
             )
 
             # Rename columns with dictionary
@@ -155,6 +170,16 @@ def _(
             )
             simd_futureDF = simd_geom_futureDF.merge(
                 simd_data_futureDF, left_on="DataZone", right_on="Data_Zone", how="left"
+            )
+
+            # Each year spells council areas differently (underscores, "&" vs
+            # "and", two renames). Canonicalise here so the dissolve key - and
+            # every downstream cross-year merge - aligns all 32 areas.
+            simd_pastDF["Council_Area"] = simd_pastDF["Council_Area"].map(
+                COUNCIL_ALIGNMENT
+            )
+            simd_futureDF["Council_Area"] = simd_futureDF["Council_Area"].map(
+                COUNCIL_ALIGNMENT
             )
 
             domain_cols2012 = [
@@ -183,7 +208,9 @@ def _(
         elif diff == "16-20":
             simd_geom_pastDF = gpd.read_file(simd_geom_past)
             simd_data_pastDF = pd.read_csv(
-                simd_data_past, usecols=[*SIMD_DOMAIN_2016.keys()]
+                simd_data_past,
+                usecols=[*SIMD_DOMAIN_2016.keys()],
+                thousands=",",
             )
 
             simd_geom_futureDF = gpd.read_file(simd_geom_future)
@@ -194,7 +221,9 @@ def _(
                 simd_geom_futureDF = simd_geom_futureDF.to_crs(27700)
 
             simd_data_futureDF = pd.read_csv(
-                simd_data_future, usecols=[*SIMD_DOMAIN_2020.keys()]
+                simd_data_future,
+                usecols=[*SIMD_DOMAIN_2020.keys()],
+                thousands=",",
             )
 
             # Rename columns with dictionary
@@ -206,6 +235,16 @@ def _(
             )
             simd_futureDF = simd_geom_futureDF.merge(
                 simd_data_futureDF, left_on="DataZone", right_on="Data_Zone", how="left"
+            )
+
+            # Each year spells council areas differently (underscores, "&" vs
+            # "and", two renames). Canonicalise here so the dissolve key - and
+            # every downstream cross-year merge - aligns all 32 areas.
+            simd_pastDF["Council_Area"] = simd_pastDF["Council_Area"].map(
+                COUNCIL_ALIGNMENT
+            )
+            simd_futureDF["Council_Area"] = simd_futureDF["Council_Area"].map(
+                COUNCIL_ALIGNMENT
             )
 
             domain_cols_past = [
@@ -463,7 +502,7 @@ def _(
             # k = np.arange(1, 1000, 5).tolist()
             k = [5, 10, 25, 50, 75, 100, 250, 500, 1000]
         else:
-            k = np.arange(1, 33, 2)
+            k = np.arange(1, 32, 1)
 
         for idx, domain in enumerate(domain_cols):
             simd_correlogram = esda.correlogram(
@@ -475,7 +514,7 @@ def _(
 
             simd_correlogram.I.plot(ax=ax[idx], marker="o")
             if dissolve:
-                ax[idx].set_title(f"Weighted Dissolve {domain} - Year {year}")
+                ax[idx].set_title(f"Dissolve {domain} - Year {year}")
             else:
                 ax[idx].set_title(f"{domain} - Year {year}")
             ax[idx].set_xlabel("K-Nearest Neighbours")
@@ -494,13 +533,310 @@ def _(
 
 @app.cell
 def _(plot_k_elbow):
-    Dissolve_k_2012 = plot_k_elbow(2012, dissolve=True)
-    return (Dissolve_k_2012,)
+    k_2012 = plot_k_elbow(2012, dissolve=True)
+    k_2016 = plot_k_elbow(2016, dissolve=True)
+    k_2020 = plot_k_elbow(2020, dissolve=True)
+
+    k_2012
+    return k_2016, k_2020
 
 
 @app.cell
-def _(Dissolve_k_2012):
-    Dissolve_k_2012
+def _(k_2016):
+    k_2016
+    return
+
+
+@app.cell
+def _(k_2020):
+    k_2020
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    KNN exploration of multiple decile suggests that spatial autocorrelation does not converge well with higher cluster, suggesting that I might need to include contiguity in combination with K = 3
+
+    Particularly for factors other than Health, most have no spatial autocorrelation, suggesting that I might need to include contiguity in combination with K = 3
+    To see if I can improve the Moran's I
+    """)
+    return
+
+
+@app.cell
+def _(
+    DissolveSIMD_2012DF,
+    DissolveSIMD_2016DF,
+    DissolveSIMD_2020DF,
+    Optional,
+    SIMD_DOMAIN_2012,
+    SIMD_DOMAIN_2016,
+    SIMD_DOMAIN_2020,
+    esda,
+    gpd,
+    graph,
+    simd_2012DF,
+    simd_2016DF,
+    simd_2020DF,
+):
+    # Let's explore the queen contiguity
+    def moran_local(
+        year: Optional[int],
+        dissolve: bool,
+        diff: bool,
+        diff_df: Optional[gpd.GeoDataFrame] = None,
+    ):
+        meta_cols = ["Data_Zone", "Council_Area", "Intermediate_Zone", "geometry"]
+
+        domain_df_dict = {
+            (2012, False, False): simd_2012DF,
+            (2012, True, False): DissolveSIMD_2012DF,
+            (2016, False, False): simd_2016DF,
+            (2016, True, False): DissolveSIMD_2016DF,
+            (2020, False, False): simd_2020DF,
+            (2020, True, False): DissolveSIMD_2020DF,
+        }
+
+        col_dict = {
+            2012: [*SIMD_DOMAIN_2012.values()],
+            2016: [*SIMD_DOMAIN_2016.values()],
+            2020: [*SIMD_DOMAIN_2020.values()],
+        }
+
+        if dissolve and not diff:
+            domain_df = domain_df_dict[(year, dissolve, diff)]
+            domain_cols = [
+                col
+                for col in domain_df.columns
+                if col.startswith("weighted")
+                and col.endswith("_Rank")
+                and col not in meta_cols
+            ]
+        elif dissolve and diff:
+            domain_df = diff_df
+            domain_cols = [
+                col
+                for col in domain_df.columns
+                if col.startswith("diff")
+                and col.endswith("_Rank")
+                and col not in meta_cols
+            ]
+        else:
+            domain_df = domain_df_dict[(year, dissolve, diff)]
+            domain_cols = [col for col in col_dict[year] if col not in meta_cols]
+
+        contiguity_graph = graph.Graph.build_contiguity(domain_df, rook=False)
+        knn3_graph = graph.Graph.build_knn(domain_df.centroid, k=3)
+
+        contiguity_r = contiguity_graph.transform("r")
+        knn3_r = knn3_graph.transform("r")
+        combi_graph = graph.Graph.union(contiguity_graph, knn3_graph)
+        combi_w = combi_graph.transform("r")
+
+        for idx, col in enumerate(domain_cols):
+            lisa_queen = esda.Moran_Local(domain_df[col], contiguity_r, permutations=99)
+            lisa_knn3 = esda.Moran_Local(domain_df[col], knn3_r, permutations=99)
+            lisa_combine = esda.Moran_Local(domain_df[col], combi_w, permutations=99)
+            domain_df[f"combine_moran'sI_{col}"] = lisa_combine.Is
+            domain_df[f"combine_pvalue_{col}"] = lisa_combine.p_sim
+            # Due to spatial aggregation, replaxing the p-value
+            domain_df[f"queen_cluster_{col}"] = lisa_queen.get_cluster_labels(
+                crit_value=0.1
+            )
+            domain_df[f"knn3_cluster_{col}"] = lisa_knn3.get_cluster_labels(
+                crit_value=0.1
+            )
+            domain_df[f"combine_cluster_{col}"] = lisa_combine.get_cluster_labels(
+                crit_value=0.1
+            )
+
+        return domain_df
+
+    return (moran_local,)
+
+
+@app.cell
+def _(moran_local):
+    cluster_Dissolve2012 = moran_local(2012, dissolve=True, diff=False)
+    cluster_Dissolve2016 = moran_local(2016, dissolve=True, diff=False)
+    cluster_Dissolve2020 = moran_local(2020, dissolve=True, diff=False)
+    cluster_Dissolve2012
+    return cluster_Dissolve2012, cluster_Dissolve2016, cluster_Dissolve2020
+
+
+@app.cell
+def _(Literal, cx, plt, sns):
+    GRAPH_TYPE = Literal["knn3", "queen", "combine"]
+
+    def plot_lisa(graph_df, method):
+        cluster_cols = [
+            col for col in graph_df.columns if col.startswith(f"{method}_cluster")
+        ]
+
+        fig, axes = plt.subplots(2, 4, figsize=(30, 15))
+        ax = axes.flatten()
+
+        color_map = {
+            "High-High": "#2c7bb6",
+            "High-Low": "#abd9e9",
+            "Low-High": "#fdae61",
+            "Low-Low": "#d7191c",
+            "Insignificant": "lightgrey",
+        }
+
+        for idx, col in enumerate(cluster_cols):
+            # Map values to colors. Unmapped categories default to transparent/white.
+            colors = graph_df[col].map(color_map).fillna("none")
+
+            graph_df.plot(ax=ax[idx], color=colors, alpha=0.7)
+            ax[idx].set_title(col)
+
+            cx.add_basemap(ax[idx], crs=graph_df.crs, source="CartoDB DarkMatter")
+
+        # Melt graph_df for histplot
+        graph_df_long = graph_df.melt(
+            value_vars=cluster_cols, var_name="Domain", value_name="Cluster Type"
+        )
+        sns.histplot(
+            graph_df_long,
+            y="Domain",
+            hue="Cluster Type",
+            hue_order=[*color_map.keys()],
+            palette=color_map,
+            multiple="stack",
+            ax=ax[-1],
+        )
+        ax[-1].set_yticklabels(
+            [
+                "Health",
+                "Income",
+                "Employmnet",
+                "Education",
+                "Housing",
+                "Geographic Access",
+                "Crime",
+            ]
+        )
+
+        plt.tight_layout()
+        return fig
+
+    return (plot_lisa,)
+
+
+@app.cell
+def _(
+    cluster_Dissolve2012,
+    cluster_Dissolve2016,
+    cluster_Dissolve2020,
+    plot_lisa,
+):
+    combine2012_moran = plot_lisa(cluster_Dissolve2012, method="combine")
+    combine2016_moran = plot_lisa(cluster_Dissolve2016, method="combine")
+    combine2020_moran = plot_lisa(cluster_Dissolve2020, method="combine")
+    combine2012_moran
+    return combine2016_moran, combine2020_moran
+
+
+@app.cell
+def _(combine2016_moran):
+    combine2016_moran
+    return
+
+
+@app.cell
+def _(combine2020_moran):
+    combine2020_moran
+    return
+
+
+@app.cell
+def _(gpd, re):
+    # Calculate the diff in volume weighted rank
+    def calculate_weighted_diff(
+        past_df: gpd.GeoDataFrame, future_df: gpd.GeoDataFrame
+    ) -> gpd.GeoDataFrame:
+        # Council_Area is already canonicalised in simd_preprocessing (via
+        # COUNCIL_ALIGNMENT), so this merge aligns all 32 areas. The guard just
+        # flags any future regression in that alignment.
+        gdf_merge = past_df.merge(future_df, on="Council_Area", how="inner")
+        if len(gdf_merge) != len(past_df):
+            print(
+                f"WARNING: diff merge kept {len(gdf_merge)}/{len(past_df)} "
+                "council areas - name mismatch remains"
+            )
+        gdf_merge = gdf_merge.drop("geometry_y", axis=1).rename(
+            columns={"geometry_x": "geometry"}
+        )
+
+        gdf_merge = gdf_merge[
+            ["Council_Area", "geometry"]
+            + [col for col in gdf_merge.columns if col.startswith("weighted_")]
+        ]
+
+        past_cols = [
+            col
+            for col in past_df.columns
+            if col.startswith("weighted_") and not col.endswith("_decile")
+        ]
+        future_cols = [
+            col
+            for col in future_df.columns
+            if col.startswith("weighted_") and not col.endswith("_decile")
+        ]
+        print(past_cols, future_cols)
+
+        for colp, colf in zip(past_cols, future_cols):
+            coln = (
+                "diff_"
+                + colp.replace("_Rank", "")
+                + "_"
+                + re.sub(r"\D", "", colf)
+                + "_Rank"
+            )
+            gdf_merge[coln] = gdf_merge[colf] - gdf_merge[colp]
+
+        return gdf_merge
+
+    return (calculate_weighted_diff,)
+
+
+@app.cell
+def _(
+    calculate_weighted_diff,
+    cluster_Dissolve2012,
+    cluster_Dissolve2016,
+    cluster_Dissolve2020,
+):
+    SIMDdiff_1216 = calculate_weighted_diff(cluster_Dissolve2012, cluster_Dissolve2016)
+    SIMDdiff_1620 = calculate_weighted_diff(cluster_Dissolve2016, cluster_Dissolve2020)
+    return SIMDdiff_1216, SIMDdiff_1620
+
+
+@app.cell
+def _(SIMDdiff_1216, SIMDdiff_1620, moran_local, plot_lisa):
+    diffcluster_SIMD1216 = moran_local(
+        year=None, dissolve=True, diff=True, diff_df=SIMDdiff_1216
+    )
+    diffcluster_SIMD1620 = moran_local(
+        year=None, dissolve=True, diff=True, diff_df=SIMDdiff_1620
+    )
+    combinediff_1216moran = plot_lisa(diffcluster_SIMD1216, method="combine")
+    combinediff_1620moran = plot_lisa(diffcluster_SIMD1620, method="combine")
+    combinediff_1216moran
+    return combinediff_1620moran, diffcluster_SIMD1216
+
+
+@app.cell
+def _(diffcluster_SIMD1216):
+    diffcluster_SIMD1216
+    return
+
+
+@app.cell
+def _(combinediff_1620moran):
+    combinediff_1620moran
     return
 
 
