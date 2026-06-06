@@ -970,5 +970,38 @@ def _(combinediff_1620moran):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Stage 1: Scotland SIMD preprocessing summary
+
+    I have rolled-up the SIMD data into Council Areas, using a volume weighted approach for each year. I calculated the Moran's I foir each domain using a lower critical level of 0.1
+
+    For absolute numbers:
+    - For all periods, the health domain consistently has the highest spatial autocorrelation, meanwhile, Income and Employment have experience some significance in spatial autocorrelation in year 2012 and 2016, but not in 2020.
+    - For period 2012 and 2016. There are more counts of High-High clustering in Health, Income and Employment than in other domains, however in 2020, Low-Low clustering has gained grounds, particularly in Geographic Access and Crime.
+    - The Councils of Highlands, Shetlands, and Orkney Islands have the lowest spatial autocorrelation in Health, Income and Employment domains, being above average and significance in their neighbouring affects.
+    - Looking at the absolute lineplots, its clear that there are no significant differences in the outcomes of rankings between the years.
+
+    For relative differences:
+    - This is a significantly more interesting metric. As it shows that the spatio autocorrelation of Health, Income and Employment has less significance compared to the absolute rankings. Suggesting that changes in these domains are less sensitive to spatial effects than the absolute rankings.
+    - Meanwhile for Crime 2016-2020, relative differences in Low-Low clustering have gain grounds, suggesting lower than average changes begets lower changes in crime in the surround areas mainly around South-East Scotland. But this was not signficant in absolute ranking.
+    - The largest change came from Health, and particularly Income and Employment in period 2016-2020. Where we saw massive gains in relative spatial autocorrelatiojn in these domains, driven predominantly by High-High and Low-Low clustering. Where Central and Southern Scotland saw above average improvements and also in their neighbouring areas.
+    - Aberdeenshire is interesting as well, where in employment domain, it was higher than average surrounding by higher areas in Health, Income, and Employment. However, relative differences suggest that the improvement in Health and Employment was only for 2012-2016, but decrease to below average change in 2016-2020.
+    - While for the Highlands, Shetlands, and Orkney Islands, although aboslute rankings suggests they are consistently above average for Income and Employment, relative differences suggest that they have been experiencing negative changes with signficance negatives changes in the surrounding areas. I.e. quality of life for Income and Employment domain are high but worsening.
+
+    The result might indicate that the more affluent rural areas in the north of Scotland with strong autocorrelation might be experience negative changes recently. While more economically deprived areas of Western Central Belt have not experienced much changes at all. with the rest of the central belt being a mixed bag results. The borders and Dumfries and Galloway are also inconsisntent.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+ 
+    """)
+    return
+
+
 if __name__ == "__main__":
     app.run()
