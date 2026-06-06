@@ -711,7 +711,7 @@ def _(Literal, cx, plt, sns):
             [
                 "Health",
                 "Income",
-                "Employmnet",
+                "Employment",
                 "Education",
                 "Housing",
                 "Geographic Access",
@@ -752,14 +752,24 @@ def _(combine2020_moran):
 
 
 @app.cell
-def _(gpd, re):
+def _(
+    DATA_INTERMEDIATE,
+    cluster_Dissolve2012,
+    cluster_Dissolve2016,
+    cluster_Dissolve2020,
+    gpd,
+    re,
+):
     # Calculate the diff in volume weighted rank
-    def calculate_weighted_diff(
-        past_df: gpd.GeoDataFrame, future_df: gpd.GeoDataFrame
-    ) -> gpd.GeoDataFrame:
-        # Council_Area is already canonicalised in simd_preprocessing (via
-        # COUNCIL_ALIGNMENT), so this merge aligns all 32 areas. The guard just
-        # flags any future regression in that alignment.
+    def calculate_weighted_diff(diff_year: int) -> gpd.GeoDataFrame:
+        match diff_year:
+            case 1216:
+                past_df = cluster_Dissolve2012
+                future_df = cluster_Dissolve2016
+            case 1620:
+                past_df = cluster_Dissolve2016
+                future_df = cluster_Dissolve2020
+
         gdf_merge = past_df.merge(future_df, on="Council_Area", how="inner")
         if len(gdf_merge) != len(past_df):
             print(
@@ -785,7 +795,6 @@ def _(gpd, re):
             for col in future_df.columns
             if col.startswith("weighted_") and not col.endswith("_decile")
         ]
-        print(past_cols, future_cols)
 
         for colp, colf in zip(past_cols, future_cols):
             coln = (
@@ -797,21 +806,130 @@ def _(gpd, re):
             )
             gdf_merge[coln] = gdf_merge[colf] - gdf_merge[colp]
 
+        gdf_merge.to_file(
+            f"{DATA_INTERMEDIATE}/simd_diff_{diff_year}.geojson", driver="GeoJSON"
+        )
+
         return gdf_merge
 
     return (calculate_weighted_diff,)
 
 
 @app.cell
+def _(DATA_INTERMEDIATE, Path, calculate_weighted_diff, gpd):
+    if Path.exists(f"{DATA_INTERMEDIATE}/simd_diff_1620.geojson"):
+        print("Diff simd dataframes already exist - skipping recalculation")
+        SIMDdiff_1216 = gpd.read_file(f"{DATA_INTERMEDIATE}/simd_diff_1216.geojson")
+        SIMDdiff_1620 = gpd.read_file(f"{DATA_INTERMEDIATE}/simd_diff_1620.geojson")
+    else:
+        print("Diff simd dataframes do not exist - calculating")
+        SIMDdiff_1216 = calculate_weighted_diff(diff_year=1216)
+        SIMDdiff_1620 = calculate_weighted_diff(diff_year=1620)
+    return SIMDdiff_1216, SIMDdiff_1620
+
+
+@app.cell
 def _(
-    calculate_weighted_diff,
+    SIMDdiff_1216,
+    SIMDdiff_1620,
     cluster_Dissolve2012,
     cluster_Dissolve2016,
     cluster_Dissolve2020,
+    pd,
+    plt,
+    sns,
 ):
-    SIMDdiff_1216 = calculate_weighted_diff(cluster_Dissolve2012, cluster_Dissolve2016)
-    SIMDdiff_1620 = calculate_weighted_diff(cluster_Dissolve2016, cluster_Dissolve2020)
-    return SIMDdiff_1216, SIMDdiff_1620
+    # Lets plot the absolute changes and the diffs side by side
+    simd_mergeDF = pd.merge(
+        cluster_Dissolve2012, cluster_Dissolve2016, on="Council_Area"
+    ).merge(cluster_Dissolve2020, on="Council_Area")
+    simd_mergeDF = simd_mergeDF[
+        [
+            col
+            for col in simd_mergeDF.columns
+            if col.startswith("weighted_") or col in ["Council_Area"]
+        ]
+    ]
+    simd_diffDF = pd.merge(SIMDdiff_1216, SIMDdiff_1620, on="Council_Area")
+    simd_diffDF = simd_diffDF[
+        [
+            col
+            for col in simd_diffDF.columns
+            if col.startswith("diff_") or col in ["Council_Area"]
+        ]
+    ]
+
+    simd_mergeDFlong = pd.melt(
+        simd_mergeDF, id_vars=["Council_Area"], var_name="simd", value_name="value"
+    )
+    simd_mergeDFlong["year"] = simd_mergeDFlong["simd"].str.extract(r"(\d{4})")
+    simd_mergeDFlong["domain"] = simd_mergeDFlong["simd"].str.split("_").str[1]
+
+    simd_diffDFlong = pd.melt(
+        simd_diffDF, id_vars=["Council_Area"], var_name="simd", value_name="value"
+    )
+    simd_diffDFlong["year"] = (
+        simd_diffDFlong["simd"]
+        .str.extract(r"(\d{4}_\d{4})", expand=False)
+        .str.replace("_", "-")
+    )
+    simd_diffDFlong["domain"] = simd_diffDFlong["simd"].str.split("_").str[2]
+
+    def plot_abs_diff(simd_mergeDFlong, simd_diffDFlong):
+
+        fig, axes = plt.subplots(4, 4, figsize=(15, 15))
+        ax = axes.flatten()
+
+        max_abs = simd_mergeDFlong["value"].abs().max()
+        max_diff = simd_diffDFlong["value"].abs().max()
+
+        for idx, domain in enumerate(simd_mergeDFlong["domain"].unique()):
+            ax_abs, ax_diff = ax[idx * 2], ax[idx * 2 + 1]
+
+            subset_abs = simd_mergeDFlong[simd_mergeDFlong["domain"] == domain]
+            subset_diff = simd_diffDFlong[simd_diffDFlong["domain"] == domain]
+
+            sns.lineplot(
+                subset_abs,
+                x="year",
+                y="value",
+                hue="Council_Area",
+                palette="Set2",
+                ax=ax_abs,
+                legend=False,
+                errorbar=None,
+            )
+
+            sns.lineplot(
+                subset_diff,
+                x="year",
+                y="value",
+                hue="Council_Area",
+                palette="Set2",
+                ax=ax_diff,
+                legend=False,
+                errorbar=None,
+            )
+
+            ax_abs.set_ylim(0, max_abs)
+
+            ax_diff.set_ylim(-max_diff, max_diff)
+            ax_diff.axhline(0, color="black", linestyle="--")
+
+            ax_abs.set_title(domain + " (absolute)")
+            ax_diff.set_title(domain + " (difference)")
+
+        for i in range(len(simd_mergeDFlong["domain"].unique()) * 2, len(ax)):
+            fig.delaxes(ax[i])
+
+        fig.legend(loc="lower right", ncol=4, title="Council Area")
+
+        plt.tight_layout()
+
+        plt.show()
+
+    plot_abs_diff(simd_mergeDFlong, simd_diffDFlong)
+    return
 
 
 @app.cell
