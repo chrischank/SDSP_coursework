@@ -17,11 +17,12 @@ def _():
     ###############################
     # Notebook for SPDS Assessment#
     # Maintainer: Christopher Chan#
-    # Version: 0.0.2              #
-    # Date: 2026-06-03            #
+    # Version: 0.0.3              #
+    # Date: 2026-06-06            #
     ###############################
 
     import sys
+    import esda
     import numpy as np
     import pandas as pd
     import geopandas as gpd
@@ -48,6 +49,7 @@ def _():
         SIMD_DOMAIN_2016,
         SIMD_DOMAIN_2020,
         cx,
+        esda,
         gpd,
         np,
         pd,
@@ -274,7 +276,9 @@ def _(DATA_INTERMEDIATE, DATA_RAW, Path, gpd, simd_preprocessing):
         simd_2016DF, simd_2020DF, DissolveSIMD_2016DF, DissolveSIMD_2020DF = (
             simd_preprocessing(
                 simd_geom_past=Path(f"{DATA_RAW}/simd2016_withgeog/sc_dz_11.shp"),
-                simd_data_past=Path(f"{DATA_RAW}/simd2016_withgeog/simd2016_withinds.csv"),
+                simd_data_past=Path(
+                    f"{DATA_RAW}/simd2016_withgeog/simd2016_withinds.csv"
+                ),
                 simd_geom_future=Path(f"{DATA_RAW}/simd2020_withgeog/sc_dz_11.shp"),
                 simd_data_future=Path(
                     f"{DATA_RAW}/simd2020_withgeog/simd2020_withinds.csv"
@@ -298,7 +302,9 @@ def _(DATA_INTERMEDIATE, DATA_RAW, Path, gpd, simd_preprocessing):
         )
 
     else:
-        print("SIMD data already exists - skip preprocessing and read from intermediate")
+        print(
+            "SIMD data already exists - skip preprocessing and read from intermediate"
+        )
         simd_2012DF = gpd.read_file(f"{DATA_INTERMEDIATE}/simd_2012.geojson")
         simd_2016DF = gpd.read_file(f"{DATA_INTERMEDIATE}/simd_2016.geojson")
         simd_2020DF = gpd.read_file(f"{DATA_INTERMEDIATE}/simd_2020.geojson")
@@ -367,10 +373,134 @@ def _(
         df.plot(proxydata, ax=ax[idx], legend=True, cmap="Spectral", alpha=0.7)
         ax[idx].set_title(titles)
 
-        cx.add_basemap(ax[idx], crs=df.crs, source="OpenStreetMap Mapnik")
+        cx.add_basemap(ax[idx], crs=df.crs, source="CartoDB DarkMatter")
 
     plt.tight_layout()
     plt.show()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Let's explore the randomness in both SIMD original and weighted quantiles
+
+    While I can use queen cardinalities in higher resolution Data Zones, I cannot use them in lower resolution Council Areas due large areas often covering an entire Island without contiguity.
+
+    In order to account for both tobler's law queen cardinality and the island effect, I can take 2 approaches:
+    1. Queen union KNN
+    or
+    2. Hyperparameter optimised KNN.
+
+    I will use the first approach for exploration.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    #### Global spatial autocorrelation for simd domains
+    """)
+    return
+
+
+@app.cell
+def _(
+    DissolveSIMD_2012DF,
+    DissolveSIMD_2016DF,
+    DissolveSIMD_2020DF,
+    SIMD_DOMAIN_2012,
+    SIMD_DOMAIN_2016,
+    SIMD_DOMAIN_2020,
+    esda,
+    np,
+    plt,
+    simd_2012DF,
+    simd_2016DF,
+    simd_2020DF,
+):
+    # First find the optimal k for original simd domain
+    def plot_k_elbow(year: int, dissolve: bool) -> plt.Figure:
+        meta_cols = ["Data_Zone", "Council_Area", "Intermediate_Zone", "geometry"]
+
+        domain_df_dict = {
+            (2012, False): simd_2012DF,
+            (2012, True): DissolveSIMD_2012DF,
+            (2016, False): simd_2016DF,
+            (2016, True): DissolveSIMD_2016DF,
+            (2020, False): simd_2020DF,
+            (2020, True): DissolveSIMD_2020DF,
+        }
+
+        col_dict = {
+            2012: [*SIMD_DOMAIN_2012.values()],
+            2016: [*SIMD_DOMAIN_2016.values()],
+            2020: [*SIMD_DOMAIN_2020.values()],
+        }
+
+        domain_df = domain_df_dict[(year, dissolve)]
+
+        if dissolve:
+            domain_cols = [
+                col
+                for col in domain_df.columns
+                if col.startswith("weighted")
+                and col.endswith("_Rank")
+                and col not in meta_cols
+            ]
+        else:
+            domain_cols = [col for col in col_dict[year] if col not in meta_cols]
+
+        print(f"Finding K for {domain_cols}")
+
+        fig, axes = plt.subplots(4, 2, figsize=(20, 10))
+        ax = axes.flatten()
+
+        repr_points = domain_df.representative_point()
+
+        if not dissolve:
+            # k = np.arange(1, 1000, 5).tolist()
+            k = [5, 10, 25, 50, 75, 100, 250, 500, 1000]
+        else:
+            k = np.arange(1, 33, 2)
+
+        for idx, domain in enumerate(domain_cols):
+            simd_correlogram = esda.correlogram(
+                geometry=repr_points,
+                variable=domain_df[domain],
+                support=k,
+                distance_type="knn",
+            )
+
+            simd_correlogram.I.plot(ax=ax[idx], marker="o")
+            if dissolve:
+                ax[idx].set_title(f"Weighted Dissolve {domain} - Year {year}")
+            else:
+                ax[idx].set_title(f"{domain} - Year {year}")
+            ax[idx].set_xlabel("K-Nearest Neighbours")
+            ax[idx].set_ylabel("Moran's I")
+
+        for i in range(len(domain_cols), len(ax)):
+            fig.delaxes(ax[i])
+
+        plt.tight_layout()
+        plt.show()
+
+        return fig
+
+    return (plot_k_elbow,)
+
+
+@app.cell
+def _(plot_k_elbow):
+    Dissolve_k_2012 = plot_k_elbow(2012, dissolve=True)
+    return (Dissolve_k_2012,)
+
+
+@app.cell
+def _(Dissolve_k_2012):
+    Dissolve_k_2012
     return
 
 
