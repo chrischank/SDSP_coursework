@@ -880,6 +880,7 @@ def _(
         fig, axes = plt.subplots(4, 4, figsize=(15, 15))
         ax = axes.flatten()
 
+        palette = sns.color_palette("gist_ncar", 32)
         max_abs = simd_mergeDFlong["value"].abs().max()
         max_diff = simd_diffDFlong["value"].abs().max()
 
@@ -894,9 +895,9 @@ def _(
                 x="year",
                 y="value",
                 hue="Council_Area",
-                palette="Set2",
+                palette=palette,
                 ax=ax_abs,
-                legend=False,
+                legend=(idx==0),
                 errorbar=None,
             )
 
@@ -905,7 +906,7 @@ def _(
                 x="year",
                 y="value",
                 hue="Council_Area",
-                palette="Set2",
+                palette=palette,
                 ax=ax_diff,
                 legend=False,
                 errorbar=None,
@@ -922,10 +923,21 @@ def _(
         for i in range(len(simd_mergeDFlong["domain"].unique()) * 2, len(ax)):
             fig.delaxes(ax[i])
 
-        fig.legend(loc="lower right", ncol=4, title="Council Area")
+        ax[0].legend_.remove()
+
+        handles, labels = ax[0].get_legend_handles_labels()
+    
+        fig.legend(
+                handles, 
+                labels, 
+                loc="lower right", 
+                bbox_to_anchor=(0.98, 0.07),
+                ncol=4, 
+                title="Council Area",
+                fontsize='small'
+                )
 
         plt.tight_layout()
-
         plt.show()
 
     plot_abs_diff(simd_mergeDFlong, simd_diffDFlong)
