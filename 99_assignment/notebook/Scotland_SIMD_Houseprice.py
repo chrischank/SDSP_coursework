@@ -15,10 +15,10 @@ def _(mo):
 @app.cell
 def _():
     ###############################
-    # Notebook for SPDS Assessment#
+    # Notebook for SDSP Assessment#
     # Maintainer: Christopher Chan#
-    # Version: 0.0.4              #
-    # Date: 2026-06-06            #
+    # Version: 0.0.5              #
+    # Date: 2026-06-10            #
     ###############################
 
     import re
@@ -41,6 +41,7 @@ def _():
         SIMD_DOMAIN_2012,
         SIMD_DOMAIN_2016,
         SIMD_DOMAIN_2020,
+        INFLATION_2011,
     )
 
     DATA_RAW = Path("../data/01_raw")
@@ -52,6 +53,7 @@ def _():
         COUNCIL_ALIGNMENT,
         DATA_INTERMEDIATE,
         DATA_RAW,
+        INFLATION_2011,
         Literal,
         Optional,
         Path,
@@ -83,6 +85,8 @@ def _(mo):
     1. Adjust median house prices for mortgage sheet to 2012 base price (inflation adjustment)
     2. Compute volume weighted median for corresponding temporal alignment with SIMD
     3. Calculate Diffs
+
+    ### Stage 1: SIMD Preprocessing
     """)
     return
 
@@ -926,7 +930,7 @@ def _(
         ax[0].legend_.remove()
 
         handles, labels = ax[0].get_legend_handles_labels()
-    
+
         fig.legend(
                 handles, 
                 labels, 
@@ -973,22 +977,21 @@ def _(combinediff_1620moran):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Stage 1: Scotland SIMD preprocessing summary
+    ### Stage 1: SIMD preprocessing summary
 
     I have rolled-up the SIMD data into Council Areas, using a volume weighted approach for each year. I calculated the Moran's I foir each domain using a lower critical level of 0.1
 
     For absolute numbers:
-    - For all periods, the health domain consistently has the highest spatial autocorrelation, meanwhile, Income and Employment have experience some significance in spatial autocorrelation in year 2012 and 2016, but not in 2020.
-    - For period 2012 and 2016. There are more counts of High-High clustering in Health, Income and Employment than in other domains, however in 2020, Low-Low clustering has gained grounds, particularly in Geographic Access and Crime.
-    - The Councils of Highlands, Shetlands, and Orkney Islands have the lowest spatial autocorrelation in Health, Income and Employment domains, being above average and significance in their neighbouring affects.
-    - Looking at the absolute lineplots, its clear that there are no significant differences in the outcomes of rankings between the years.
+    - For all periods, the health domain consistently has the highest statistical significance in spatial autocorrelation, meanwhile, Income and Employment have experience some significance in spatial autocorrelation in year 2012 and 2016, but not in 2020.
+    - For period 2012 and 2016. There are more counts of High-High clustering in Health, Income and Employment than in other meaning that for Council Areas that are statistically significant, spatial effects are more pronounce when it comes to health, income, and employment when the council is above average and surrounding by areas of above average. However in 2020, Low-Low clustering has gained grounds, particularly in Health. These councils are concentrated in more deprived areas of Western Scotland.
+    - The Councils of Highlands, Shetlands, and Orkney Islands have the highest clustering for Health, Income and Employment domains, being above average and significance in their neighbouring affects.
 
     For relative differences:
-    - This is a significantly more interesting metric. As it shows that the spatio autocorrelation of Health, Income and Employment has less significance compared to the absolute rankings. Suggesting that changes in these domains are less sensitive to spatial effects than the absolute rankings.
-    - Meanwhile for Crime 2016-2020, relative differences in Low-Low clustering have gain grounds, suggesting lower than average changes begets lower changes in crime in the surround areas mainly around South-East Scotland. But this was not signficant in absolute ranking.
+    - This is a significantly more interesting metric. Looking at the relative lineplots, we saw a smaller increase of ranking for 2016-2020 when compared to 2012-2016 for all domains. For the Highlands, Shetlands, and Orkney Islands, although aboslute rankings suggests they are consistently above average for Income and Employment, relative differences suggest that high absolute spatial relationship do not translate to relative. Particularly for Income and Employment, The Shetland and Orkeny Islands experiencing negative changes with signficance negatives changes in the surrounding areas. I.e. quality of life for Income and Employment domain are high but worsening.
+    - Meanwhile for Crime 2016-2020, relative differences in Low-Low clustering have gain grounds in South-East of Scotland, suggesting lower than average changes begets lower changes in crime in the surround areas. But this was not signficant in absolute ranking for 2012 and 2016, but we saw the border regions being significant in High-Low clustering. This might suggest that the border regions are experiencing increase in crime caused by neighbouring affects.
     - The largest change came from Health, and particularly Income and Employment in period 2016-2020. Where we saw massive gains in relative spatial autocorrelatiojn in these domains, driven predominantly by High-High and Low-Low clustering. Where Central and Southern Scotland saw above average improvements and also in their neighbouring areas.
-    - Aberdeenshire is interesting as well, where in employment domain, it was higher than average surrounding by higher areas in Health, Income, and Employment. However, relative differences suggest that the improvement in Health and Employment was only for 2012-2016, but decrease to below average change in 2016-2020.
-    - While for the Highlands, Shetlands, and Orkney Islands, although aboslute rankings suggests they are consistently above average for Income and Employment, relative differences suggest that they have been experiencing negative changes with signficance negatives changes in the surrounding areas. I.e. quality of life for Income and Employment domain are high but worsening.
+    - Housing in the highland council were consistently high for 2016 and 2020 absolute with signficance in High-High clustering. However, relative differences clustering have worsen from Low-High to Low-Low for 2012-2016, 2016-2020 respectively. This might indicate that although the surrounding regions still have high housing availability, the changes from the below average surrounding areas are impacting Highlands particularly for 2016-2020.
+    - Aberdeen, Moray and Aberdeenshire is interesting as well, where in Health, Income, and Employment domain, it was higher than average surrounding by higher areas consistently. However, relative differences in clustering suggest that the improvement in Health and Employment was only for 2012-2016, but decrease to below average change and clustering (Low-Low) in 2016-2020.
 
     The result might indicate that the more affluent rural areas in the north of Scotland with strong autocorrelation might be experience negative changes recently. While more economically deprived areas of Western Central Belt have not experienced much changes at all. with the rest of the central belt being a mixed bag results. The borders and Dumfries and Galloway are also inconsisntent. Excluding spatial autocorrelation, we generally saw stagnation with 2016-2020 saw lower positive changes in improvement compared to 2012-2016. Growth in quality of life have generally reduced, with Crime seeing mixed result. Most significant was housing where there were little to no changes in ranking for 2016-2020. Employment and Income were both trending into the negative with 2016-2020, suggesting that income and employment metrics have worsen overall.
     """)
@@ -998,8 +1001,163 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
- 
+    ### Stage 2: ~House purchase price preprocessing
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    I will be using the ROS house median house price dataset sheet C6: Median, mean, volume and value of all residential market value property sales by funding status and local authority: Scotland, since 2004, calendar year data
+    """)
+    return
+
+
+@app.cell
+def _(DATA_RAW, pd):
+    ros_salesDF = pd.read_excel(f"{DATA_RAW}/ros_all_stats_March_2026.xlsx", sheet_name="C6", skiprows=5, usecols=range(1, 8))
+    ros_salesDF["Funding status"] = ros_salesDF["Funding status"].str.replace(r"^\d{1}\s-\s", "", regex=True)
+    ros_salesDF = ros_salesDF[ros_salesDF["Local authority"] != "Scotland"]
+
+    # Council name alignment for Na h-Eileanan an Iar
+    ros_salesDF['Local authority'] = ros_salesDF['Local authority'].str.replace(
+        "Na h-Eileanan Siar", 
+        "Na h-Eileanan an Iar", 
+        regex=False
+    )
+    return (ros_salesDF,)
+
+
+@app.cell
+def _(simd_2012DF):
+    simd_2012DF
+    return
+
+
+@app.cell
+def _(ros_salesDF):
+    ros_salesDF
+    return
+
+
+@app.cell
+def _(INFLATION_2011, gpd, pd):
+    def ros_volume_weighted(df: pd.DataFrame, simd_year: int, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    
+        # 1. Standardize columns
+        df = df.rename(columns={
+            "Calendar year": "Year",
+            "Local authority": "Council_Area",
+            "Local authority code": "Council_Code",
+            "Funding status": "Funding_Status",
+            "Median residential property price (£)": "Median_Price",
+            "Mean residential property price (£)": "Mean_Price",
+            "Volume of residential property sales": "Volume",
+        })
+
+        mask = (df["Year"].between(simd_year-4, simd_year, inclusive="left"))
+        mask_df = df.loc[mask].copy()
+
+        # Baseline inflation adjustment
+        inflation = mask_df["Year"].map(INFLATION_2011)
+        mask_df["Mean_Price"] *= inflation
+        mask_df["Median_Price"] *= inflation
+
+        match simd_year:
+            case 2012:
+                mask_df["Year_Range"] = "2008-2011"
+            case 2016:
+                mask_df["Year_Range"] = "2012-2015"
+            case 2020:
+                mask_df["Year_Range"] = "2016-2019"
+
+        def calculate_weighted_metrics(group):
+            w = group["Volume"]
+            w_sum = w.sum()
+        
+            vw_mean = (group["Mean_Price"] * w).sum() / w_sum
+
+            g_sorted = group.dropna(subset=["Median_Price", "Volume"]).sort_values("Median_Price")
+            cumsum = g_sorted["Volume"].cumsum()
+            vw_median = g_sorted.loc[cumsum >= (w_sum / 2.0), "Median_Price"].iloc[0]
+
+            return pd.Series({"VW_Mean_Price": vw_mean, "VW_Median_Price": vw_median, "Total_Volume": w_sum})
+
+        agg_df = mask_df.groupby(["Year_Range", "Council_Area", "Council_Code", "Funding_Status"]).apply(
+            calculate_weighted_metrics, 
+            include_groups=False
+        ).reset_index().drop_duplicates()
+
+        merged_df = pd.merge(
+            agg_df, 
+            gdf[["Council_Area", "geometry"]], 
+            on="Council_Area",
+            how="left"
+        )
+
+        return gpd.GeoDataFrame(merged_df, geometry="geometry", crs=gdf.crs)
+
+    return (ros_volume_weighted,)
+
+
+@app.cell
+def _(cluster_Dissolve2012, ros_salesDF, ros_volume_weighted):
+    ros_simd2012_df = ros_volume_weighted(ros_salesDF, 2012, cluster_Dissolve2012)
+    ros_simd2016_df = ros_volume_weighted(ros_salesDF, 2016, cluster_Dissolve2012)
+    ros_simd2020_df = ros_volume_weighted(ros_salesDF, 2020, cluster_Dissolve2012)
+    return ros_simd2012_df, ros_simd2016_df, ros_simd2020_df
+
+
+@app.cell
+def _(gpd, pd, ros_simd2012_df, ros_simd2016_df, ros_simd2020_df):
+    ros_concat_df = gpd.GeoDataFrame(pd.concat([ros_simd2012_df, ros_simd2016_df, ros_simd2020_df], axis=0, ignore_index=True)).reset_index()
+    return (ros_concat_df,)
+
+
+@app.cell
+def _(ros_concat_df):
+    ros_concat_df
+    return
+
+
+@app.cell
+def _(cx, np, plt):
+    # Lets plot and explore the volume weighted average price for different funding status
+    def plot_house_price(vw_gdf, average:str):
+        fig, axes = plt.subplots(3, 3, figsize=(15, 15))
+        ax = axes.flatten()
+        idx = 0
+
+        min_price = np.nanmin(vw_gdf[["VW_Mean_Price", "VW_Median_Price"]].to_numpy())
+        max_price = np.nanmax(vw_gdf[["VW_Mean_Price", "VW_Median_Price"]].to_numpy())
+
+        for status in vw_gdf["Funding_Status"].unique():
+            for year in vw_gdf["Year_Range"].unique():
+                filter_gdf = vw_gdf[(vw_gdf["Year_Range"] == year) & (vw_gdf["Funding_Status"] == status)]
+                filter_gdf.plot(average, ax=ax[idx], cmap="RdYlGn_r", vmin=min_price, vmax=max_price, legend=True, alpha=0.7)
+
+                cx.add_basemap(ax[idx], crs=filter_gdf.crs, source="CartoDB DarkMatter")
+            
+                ax[idx].set_title(f"{year} {status} - ({average})")
+
+                idx += 1
+
+        plt.tight_layout()
+        plt.show()
+
+    return (plot_house_price,)
+
+
+@app.cell
+def _(plot_house_price, ros_concat_df):
+    plot_house_price(ros_concat_df, "VW_Median_Price")
+    return
+
+
+@app.cell
+def _(plot_house_price, ros_concat_df):
+    plot_house_price(ros_concat_df, "VW_Mean_Price")
     return
 
 

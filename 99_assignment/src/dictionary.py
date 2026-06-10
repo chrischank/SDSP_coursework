@@ -105,3 +105,18 @@ COUNCIL_ALIGNMENT = {
     "West_Dunbartonshire": "West Dunbartonshire",
     "West_Lothian": "West Lothian",
 }
+
+INFLATION_2011 = {
+    2008: 1.10,
+    2009: 1.08,
+    2010: 1.04,
+    2011: 1,
+    2012: 0.97,
+    2013: 0.95,
+    2014: 0.93,
+    2015: 0.93,
+    2016: 0.93,
+    2017: 0.9,
+    2018: 0.88,
+    2019: 0.87,
+}
