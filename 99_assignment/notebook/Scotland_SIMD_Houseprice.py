@@ -17,8 +17,8 @@ def _():
     ###############################
     # Notebook for SDSP Assessment#
     # Maintainer: Christopher Chan#
-    # Version: 0.0.5              #
-    # Date: 2026-06-10            #
+    # Version: 0.0.6              #
+    # Date: 2026-06-11            #
     ###############################
 
     import re
@@ -51,6 +51,7 @@ def _():
     DATA_FEATURE = Path("../data/03_feature")
     return (
         COUNCIL_ALIGNMENT,
+        DATA_FEATURE,
         DATA_INTERMEDIATE,
         DATA_RAW,
         INFLATION_2011,
@@ -901,7 +902,7 @@ def _(
                 hue="Council_Area",
                 palette=palette,
                 ax=ax_abs,
-                legend=(idx==0),
+                legend=(idx == 0),
                 errorbar=None,
             )
 
@@ -932,14 +933,14 @@ def _(
         handles, labels = ax[0].get_legend_handles_labels()
 
         fig.legend(
-                handles, 
-                labels, 
-                loc="lower right", 
-                bbox_to_anchor=(0.98, 0.07),
-                ncol=4, 
-                title="Council Area",
-                fontsize='small'
-                )
+            handles,
+            labels,
+            loc="lower right",
+            bbox_to_anchor=(0.98, 0.07),
+            ncol=4,
+            title="Council Area",
+            fontsize="small",
+        )
 
         plt.tight_layout()
         plt.show()
@@ -1001,7 +1002,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Stage 2: ~House purchase price preprocessing
+    ### Stage 2: House purchase price preprocessing
     """)
     return
 
@@ -1016,15 +1017,20 @@ def _(mo):
 
 @app.cell
 def _(DATA_RAW, pd):
-    ros_salesDF = pd.read_excel(f"{DATA_RAW}/ros_all_stats_March_2026.xlsx", sheet_name="C6", skiprows=5, usecols=range(1, 8))
-    ros_salesDF["Funding status"] = ros_salesDF["Funding status"].str.replace(r"^\d{1}\s-\s", "", regex=True)
+    ros_salesDF = pd.read_excel(
+        f"{DATA_RAW}/ros_all_stats_March_2026.xlsx",
+        sheet_name="C6",
+        skiprows=5,
+        usecols=range(1, 8),
+    )
+    ros_salesDF["Funding status"] = ros_salesDF["Funding status"].str.replace(
+        r"^\d{1}\s-\s", "", regex=True
+    )
     ros_salesDF = ros_salesDF[ros_salesDF["Local authority"] != "Scotland"]
 
     # Council name alignment for Na h-Eileanan an Iar
-    ros_salesDF['Local authority'] = ros_salesDF['Local authority'].str.replace(
-        "Na h-Eileanan Siar", 
-        "Na h-Eileanan an Iar", 
-        regex=False
+    ros_salesDF["Local authority"] = ros_salesDF["Local authority"].str.replace(
+        "Na h-Eileanan Siar", "Na h-Eileanan an Iar", regex=False
     )
     return (ros_salesDF,)
 
@@ -1043,20 +1049,24 @@ def _(ros_salesDF):
 
 @app.cell
 def _(INFLATION_2011, gpd, pd):
-    def ros_volume_weighted(df: pd.DataFrame, simd_year: int, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    
-        # 1. Standardize columns
-        df = df.rename(columns={
-            "Calendar year": "Year",
-            "Local authority": "Council_Area",
-            "Local authority code": "Council_Code",
-            "Funding status": "Funding_Status",
-            "Median residential property price (£)": "Median_Price",
-            "Mean residential property price (£)": "Mean_Price",
-            "Volume of residential property sales": "Volume",
-        })
+    def ros_volume_weighted(
+        df: pd.DataFrame, simd_year: int, gdf: gpd.GeoDataFrame
+    ) -> gpd.GeoDataFrame:
 
-        mask = (df["Year"].between(simd_year-4, simd_year, inclusive="left"))
+        # 1. Standardize columns
+        df = df.rename(
+            columns={
+                "Calendar year": "Year",
+                "Local authority": "Council_Area",
+                "Local authority code": "Council_Code",
+                "Funding status": "Funding_Status",
+                "Median residential property price (£)": "Median_Price",
+                "Mean residential property price (£)": "Mean_Price",
+                "Volume of residential property sales": "Volume",
+            }
+        )
+
+        mask = df["Year"].between(simd_year - 4, simd_year, inclusive="left")
         mask_df = df.loc[mask].copy()
 
         # Baseline inflation adjustment
@@ -1072,28 +1082,37 @@ def _(INFLATION_2011, gpd, pd):
             case 2020:
                 mask_df["Year_Range"] = "2016-2019"
 
-        def calculate_weighted_metrics(group):
+        def _calculate_weighted_metrics(group):
             w = group["Volume"]
             w_sum = w.sum()
-        
+
             vw_mean = (group["Mean_Price"] * w).sum() / w_sum
 
-            g_sorted = group.dropna(subset=["Median_Price", "Volume"]).sort_values("Median_Price")
+            g_sorted = group.dropna(subset=["Median_Price", "Volume"]).sort_values(
+                "Median_Price"
+            )
             cumsum = g_sorted["Volume"].cumsum()
             vw_median = g_sorted.loc[cumsum >= (w_sum / 2.0), "Median_Price"].iloc[0]
 
-            return pd.Series({"VW_Mean_Price": vw_mean, "VW_Median_Price": vw_median, "Total_Volume": w_sum})
+            return pd.Series(
+                {
+                    "VW_Mean_Price": vw_mean,
+                    "VW_Median_Price": vw_median,
+                    "Total_Volume": w_sum,
+                }
+            )
 
-        agg_df = mask_df.groupby(["Year_Range", "Council_Area", "Council_Code", "Funding_Status"]).apply(
-            calculate_weighted_metrics, 
-            include_groups=False
-        ).reset_index().drop_duplicates()
+        agg_df = (
+            mask_df.groupby(
+                ["Year_Range", "Council_Area", "Council_Code", "Funding_Status"]
+            )
+            .apply(_calculate_weighted_metrics, include_groups=False)
+            .reset_index()
+            .drop_duplicates()
+        )
 
         merged_df = pd.merge(
-            agg_df, 
-            gdf[["Council_Area", "geometry"]], 
-            on="Council_Area",
-            how="left"
+            agg_df, gdf[["Council_Area", "geometry"]], on="Council_Area", how="left"
         )
 
         return gpd.GeoDataFrame(merged_df, geometry="geometry", crs=gdf.crs)
@@ -1111,7 +1130,13 @@ def _(cluster_Dissolve2012, ros_salesDF, ros_volume_weighted):
 
 @app.cell
 def _(gpd, pd, ros_simd2012_df, ros_simd2016_df, ros_simd2020_df):
-    ros_concat_df = gpd.GeoDataFrame(pd.concat([ros_simd2012_df, ros_simd2016_df, ros_simd2020_df], axis=0, ignore_index=True)).reset_index()
+    ros_concat_df = gpd.GeoDataFrame(
+        pd.concat(
+            [ros_simd2012_df, ros_simd2016_df, ros_simd2020_df],
+            axis=0,
+            ignore_index=True,
+        )
+    ).reset_index()
     return (ros_concat_df,)
 
 
@@ -1124,7 +1149,7 @@ def _(ros_concat_df):
 @app.cell
 def _(cx, np, plt):
     # Lets plot and explore the volume weighted average price for different funding status
-    def plot_house_price(vw_gdf, average:str):
+    def plot_house_price(vw_gdf, average: str):
         fig, axes = plt.subplots(3, 3, figsize=(15, 15))
         ax = axes.flatten()
         idx = 0
@@ -1134,11 +1159,22 @@ def _(cx, np, plt):
 
         for status in vw_gdf["Funding_Status"].unique():
             for year in vw_gdf["Year_Range"].unique():
-                filter_gdf = vw_gdf[(vw_gdf["Year_Range"] == year) & (vw_gdf["Funding_Status"] == status)]
-                filter_gdf.plot(average, ax=ax[idx], cmap="RdYlGn_r", vmin=min_price, vmax=max_price, legend=True, alpha=0.7)
+                filter_gdf = vw_gdf[
+                    (vw_gdf["Year_Range"] == year)
+                    & (vw_gdf["Funding_Status"] == status)
+                ]
+                filter_gdf.plot(
+                    average,
+                    ax=ax[idx],
+                    cmap="RdYlGn_r",
+                    vmin=min_price,
+                    vmax=max_price,
+                    legend=True,
+                    alpha=0.7,
+                )
 
                 cx.add_basemap(ax[idx], crs=filter_gdf.crs, source="CartoDB DarkMatter")
-            
+
                 ax[idx].set_title(f"{year} {status} - ({average})")
 
                 idx += 1
@@ -1158,6 +1194,87 @@ def _(plot_house_price, ros_concat_df):
 @app.cell
 def _(plot_house_price, ros_concat_df):
     plot_house_price(ros_concat_df, "VW_Mean_Price")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Modelling
+    1. First I will perform an OLS modelling and look at the residual to see the results for absolute and differences
+    2. Then I will do the same with spatial lag added to both dataset.
+    3. Once I have a performant model, I will use the rest of the ros data to predict the next set of simd domain
+
+    #### OLS modelling
+    """)
+    return
+
+
+@app.cell
+def _(DATA_FEATURE, gpd, pd, re):
+    def ols_preprocessing(df_2012, df_2016, df_2020, ros_df):
+        simd_df_list = [df_2012, df_2016, df_2020]
+
+        # Assign new columns directly
+        df_2012["Year_Range"] = "2008-2011"
+        df_2016["Year_Range"] = "2012-2015"
+        df_2020["Year_Range"] = "2016-2019"
+
+        processed_df = []
+
+        for df in simd_df_list:
+            # FIX 1: Use .tolist() to flatten the Index into standard strings
+            cols_to_keep = df.columns[:9].tolist() + ["Year_Range", "geometry"]
+            df_copy = df[cols_to_keep].copy()
+
+            # FIX 2: Account for all 11 columns to prevent ValueError: Length mismatch.
+            # This keeps column 0 unchanged, applies regex to 1-8, and appends the final 2.
+            col_0 = [df_copy.columns[0]]
+            renamed_cols = [re.sub(r"\d{4}_", "", col) for col in df_copy.columns[1:9]]
+            df_copy.columns = col_0 + renamed_cols + ["Year_Range", "geometry"]
+
+            processed_df.append(df_copy)
+
+        # FIX 3: Reference df_2012.crs instead of the global simd_2012DF.crs
+        simd_concat_df = pd.concat(processed_df, axis=0, ignore_index=True)
+
+        simd_ros_df = pd.merge(
+            simd_concat_df, ros_df, on=["Council_Area", "Year_Range"], how="left"
+        )
+        simd_ros_df.drop(columns=["geometry_x"], inplace=True)
+        simd_ros_df.rename(columns={"geometry_y": "geometry"}, inplace=True)
+
+        simd_ros_gdf = gpd.GeoDataFrame(
+            simd_ros_df, geometry="geometry", crs=simd_ros_df.crs
+        )
+        simd_ros_gdf.to_file(f"{DATA_FEATURE}/simd_ros.geojson", driver="GeoJSON")
+
+        return simd_ros_gdf
+
+    return (ols_preprocessing,)
+
+
+@app.cell
+def _(
+    DATA_FEATURE,
+    DissolveSIMD_2012DF,
+    DissolveSIMD_2016DF,
+    DissolveSIMD_2020DF,
+    Path,
+    gpd,
+    ols_preprocessing,
+    ros_concat_df,
+):
+    if not Path.exists(f"{DATA_FEATURE}/simd_ros.geojson"):
+        print("SIMD ROS joined GeoJSON not found -- creating")
+        simd_concat_df = ols_preprocessing(
+            DissolveSIMD_2012DF, DissolveSIMD_2016DF, DissolveSIMD_2020DF, ros_concat_df
+        )
+    else:
+        print("SIMD ROS joined GeoJSON found -- loading")
+        simd_concat_df = gpd.read_file("{DATA_INTERMEDIATE}/simd_ros.geojson")
+
+    simd_concat_df
     return
 
 
