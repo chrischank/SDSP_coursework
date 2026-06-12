@@ -17,8 +17,8 @@ def _():
     ###############################
     # Notebook for SDSP Assessment#
     # Maintainer: Christopher Chan#
-    # Version: 0.0.6              #
-    # Date: 2026-06-11            #
+    # Version: 0.0.7              #
+    # Date: 2026-06-13            #
     ###############################
 
     import re
@@ -30,6 +30,8 @@ def _():
     import matplotlib.pyplot as plt
     import contextily as cx
     import seaborn as sns
+    import statsmodels.api as sm
+    import statsmodels.formula.api as smf
 
     from pathlib import Path
     from libpysal import graph
@@ -69,6 +71,7 @@ def _():
         pd,
         plt,
         re,
+        smf,
         sns,
     )
 
@@ -1224,13 +1227,13 @@ def _(DATA_FEATURE, gpd, pd, re):
 
         for df in simd_df_list:
             # FIX 1: Use .tolist() to flatten the Index into standard strings
-            cols_to_keep = df.columns[:9].tolist() + ["Year_Range", "geometry"]
+            cols_to_keep = df.columns[:8].tolist() + ["Year_Range", "geometry"]
             df_copy = df[cols_to_keep].copy()
 
             # FIX 2: Account for all 11 columns to prevent ValueError: Length mismatch.
             # This keeps column 0 unchanged, applies regex to 1-8, and appends the final 2.
             col_0 = [df_copy.columns[0]]
-            renamed_cols = [re.sub(r"\d{4}_", "", col) for col in df_copy.columns[1:9]]
+            renamed_cols = [re.sub(r"\d{4}_", "", col) for col in df_copy.columns[1:8]]
             df_copy.columns = col_0 + renamed_cols + ["Year_Range", "geometry"]
 
             processed_df.append(df_copy)
@@ -1272,9 +1275,140 @@ def _(
         )
     else:
         print("SIMD ROS joined GeoJSON found -- loading")
-        simd_concat_df = gpd.read_file("{DATA_INTERMEDIATE}/simd_ros.geojson")
+        simd_concat_df = gpd.read_file(f"{DATA_FEATURE}/simd_ros.geojson")
 
     simd_concat_df
+    return (simd_concat_df,)
+
+
+@app.cell
+def _(pd, simd_concat_df):
+    # One-hot encoding of cateogorical variables
+    simd_concat_OHdf = pd.get_dummies(
+        simd_concat_df, columns=["Year_Range", "Funding_Status", "Council_Area"],
+    ).drop(columns=["index"])
+    simd_concat_OHdf.head()
+    return (simd_concat_OHdf,)
+
+
+@app.function
+def generate_xvar(df):
+    ros_X_var = df.columns.drop(
+        [
+            "Council_Code",
+            "Total_Volume",
+            "geometry"
+        ]
+        + [col for col in df.columns if col.startswith("VW")]
+        #+ [col for col in df.columns if col.startswith("Year_Range")]
+        #+ [col for col in df.columns if col.startswith("Funding_Status")]
+        #+ [col for col in df.columns if col.startswith("Council_Area")]
+    )
+
+    ros_X_var = [f"Q('{col}')" for col in ros_X_var]
+
+    return ros_X_var
+
+
+@app.cell
+def _(simd_concat_OHdf, smf):
+    formula_simd_ros = f"VW_Median_Price ~ {" + ".join(generate_xvar(simd_concat_OHdf))}"
+    ols = smf.ols(formula_simd_ros, data=simd_concat_OHdf).fit()
+    ols.summary()
+    return (ols,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    #### OLS modelling (Spatial)
+    """)
+    return
+
+
+@app.cell
+def _(graph, pd):
+    def calculate_combine_lag(concat_df, group_col="Council_Code"):
+        xvar_cols = [col for col in concat_df.columns if col.startswith("weighted_")]
+
+        agg_dict = {col: "first" for col in xvar_cols} 
+        agg_dict["geometry"] = "first"
+
+        unique_geoms = concat_df.groupby(group_col).agg(agg_dict).set_geometry("geometry")
+
+        contiguity_graph = graph.Graph.build_contiguity(unique_geoms)
+        knn3_graph = graph.Graph.build_knn(unique_geoms.centroid, k=3)
+
+        combi_graph = graph.Graph.union(contiguity_graph, knn3_graph)
+        combi_w = combi_graph.transform("r")
+
+        lag_cols = []
+        for col in xvar_cols:
+            lag_col_name = f"{col}_lag"
+            unique_geoms[lag_col_name] = combi_w.lag(unique_geoms[col])
+            lag_cols.append(lag_col_name)
+
+        # Join back with the original dataframe
+        spatial_concat_df = pd.merge(
+            concat_df, 
+            unique_geoms,
+            on=[group_col, "geometry", *xvar_cols], 
+            how="left"
+        )
+
+        return spatial_concat_df
+
+    return (calculate_combine_lag,)
+
+
+@app.cell
+def _(calculate_combine_lag, simd_concat_OHdf):
+    simd_spatial_OHdf = calculate_combine_lag(simd_concat_OHdf)
+
+    simd_spatial_OHdf.head()
+    return (simd_spatial_OHdf,)
+
+
+@app.cell
+def _(simd_spatial_OHdf, smf):
+    formula_lag_simd_ros = f"VW_Median_Price ~ {" + ".join(generate_xvar(simd_spatial_OHdf))}"
+    ols_lag = smf.ols(formula_lag_simd_ros, data=simd_spatial_OHdf).fit()
+    ols_lag.summary()
+    return
+
+
+@app.cell
+def _(cx, plt):
+    def plot_ols_simd_ros(ols_model, OH_gdf, spatial:bool):
+        ols_predicted = ols_model.predict(OH_gdf)
+        ols_resid = ols_model.resid
+
+        fig, axes = plt.subplots(1, 3, figsize = (20, 7))
+        ax = axes.flatten()
+
+        for idx, yvar in enumerate(["VW_Median_Price", ols_predicted, ols_resid]):
+            OH_gdf.plot(yvar, legend=True, cmap="RdYlGn_r", ax=ax[idx], alpha=0.7)
+
+            cx.add_basemap(ax[idx], source="CartoDB DarkMatter", crs=OH_gdf.crs)
+
+        ax[0].set_title("Actual VW Median Price")
+        ax[1].set_title("Predicted VW Median Price")
+        ax[2].set_title("Residuals")
+
+        if not spatial:
+            fig.suptitle("OLS Regresseion of SIMD on Median House Price")
+        else:
+            fig.suptitle("OLS Regresseion of SIMD on Median House Price (Spatial Regression)")
+
+        plt.tight_layout()
+        plt.show()
+
+    return (plot_ols_simd_ros,)
+
+
+@app.cell
+def _(ols, plot_ols_simd_ros, simd_concat_OHdf):
+    plot_ols_simd_ros(ols, simd_concat_OHdf, spatial=False)
     return
 
 
