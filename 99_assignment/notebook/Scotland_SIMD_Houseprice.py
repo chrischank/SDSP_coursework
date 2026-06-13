@@ -17,7 +17,7 @@ def _():
     ###############################
     # Notebook for SDSP Assessment#
     # Maintainer: Christopher Chan#
-    # Version: 0.0.7              #
+    # Version: 0.0.8              #
     # Date: 2026-06-13            #
     ###############################
 
