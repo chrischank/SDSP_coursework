@@ -28,6 +28,7 @@ def _():
     import pandas as pd
     import geopandas as gpd
     import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
     import contextily as cx
     import seaborn as sns
     import statsmodels.api as sm
@@ -67,6 +68,7 @@ def _():
         esda,
         gpd,
         graph,
+        mpatches,
         np,
         pd,
         plt,
@@ -1374,31 +1376,81 @@ def _(simd_spatial_OHdf, smf):
     formula_lag_simd_ros = f"VW_Median_Price ~ {" + ".join(generate_xvar(simd_spatial_OHdf))}"
     ols_lag = smf.ols(formula_lag_simd_ros, data=simd_spatial_OHdf).fit()
     ols_lag.summary()
-    return
+    return (ols_lag,)
 
 
 @app.cell
-def _(cx, plt):
-    def plot_ols_simd_ros(ols_model, OH_gdf, spatial:bool):
-        ols_predicted = ols_model.predict(OH_gdf)
-        ols_resid = ols_model.resid
+def _(cx, esda, graph, mpatches, pd, plt):
+    def plot_ols_simd_ros(ols_model, OH_gdf, spatial: bool):
+        OH_gdf["Predicted"] = ols_model.predict(OH_gdf)
+        OH_gdf["Residuals"] = ols_model.resid
 
-        fig, axes = plt.subplots(1, 3, figsize = (20, 7))
+        # Adding wkt for later join because I one-hot encoded the Council_Area
+        OH_gdf["geom_wkt"] = OH_gdf.geometry.to_wkt()
+
+        price_vmin = min(OH_gdf["VW_Median_Price"].min(), OH_gdf["Predicted"].min())
+        price_vmax = max(OH_gdf["VW_Median_Price"].max(), OH_gdf["Predicted"].max())
+
+
+        fig, axes = plt.subplots(1, 4, figsize=(25, 7))
         ax = axes.flatten()
 
-        for idx, yvar in enumerate(["VW_Median_Price", ols_predicted, ols_resid]):
-            OH_gdf.plot(yvar, legend=True, cmap="RdYlGn_r", ax=ax[idx], alpha=0.7)
+        color_map = {
+                "High-High": "#2c7bb6",
+                "High-Low": "#abd9e9",
+                "Low-High": "#fdae61",
+                "Low-Low": "#d7191c",
+                "Insignificant": "lightgrey",
+            }
 
-            cx.add_basemap(ax[idx], source="CartoDB DarkMatter", crs=OH_gdf.crs)
-
+        OH_gdf.plot("VW_Median_Price", legend=True, cmap="RdYlGn_r", ax=ax[0], alpha=0.7, 
+                    vmin=price_vmin, vmax=price_vmax)
         ax[0].set_title("Actual VW Median Price")
+
+        OH_gdf.plot("Predicted", legend=True, cmap="RdYlGn_r", ax=ax[1], alpha=0.7, 
+                    vmin=price_vmin, vmax=price_vmax)
         ax[1].set_title("Predicted VW Median Price")
+
+        OH_gdf.plot("Residuals", legend=True, cmap="RdBu", ax=ax[2], alpha=0.7)
         ax[2].set_title("Residuals")
 
-        if not spatial:
-            fig.suptitle("OLS Regresseion of SIMD on Median House Price")
-        else:
-            fig.suptitle("OLS Regresseion of SIMD on Median House Price (Spatial Regression)")
+        # Since provided gdf has multiple duplicated geometries
+        # I first need to groupby aggregate the residuals and geometry
+        unique_geoms = OH_gdf.groupby("geom_wkt").agg(
+            {
+                "Residuals": "mean",
+                "geometry": "first",
+            }
+        ).set_geometry("geometry")
+
+        contiguity_graph = graph.Graph.build_contiguity(unique_geoms, rook=False)
+        knn3_graph = graph.Graph.build_knn(unique_geoms.centroid, k=3)
+        combi_graph = graph.Graph.union(contiguity_graph, knn3_graph)
+        combi_w = combi_graph.transform("r")
+
+        resid_lisa = esda.Moran_Local(unique_geoms["Residuals"], combi_w, permutations=99)
+        unique_geoms["combine_cluster_resid"] = resid_lisa.get_cluster_labels(
+            crit_value=0.1
+        )
+
+        # Now that I have unique geometries with cluster labels, left join back to original gdf
+        OH_gdf = pd.merge(OH_gdf, unique_geoms[["combine_cluster_resid"]],
+            on="geom_wkt", how="left")
+
+        colors = OH_gdf["combine_cluster_resid"].map(color_map)
+        OH_gdf.plot("combine_cluster_resid", ax=ax[3], color=colors, legend=True, alpha=0.7)
+        ax[3].set_title("Residuals Moran Cluster")
+    
+        legend_patches = [mpatches.Patch(color=hex_val, label=label) 
+                          for label, hex_val in color_map.items()]
+        ax[3].legend(handles=legend_patches, loc="upper left", 
+                     title="Cluster Type", frameon=True, framealpha=0.9)
+        # --- Formatting & Basemaps ---
+        for i in range(4):
+            cx.add_basemap(ax[i], source="CartoDB DarkMatter", crs=OH_gdf.crs)
+
+        title_suffix = " (Spatial Regression)" if spatial else ""
+        fig.suptitle(f"OLS Regression of SIMD on Median House Price{title_suffix}")
 
         plt.tight_layout()
         plt.show()
@@ -1409,6 +1461,17 @@ def _(cx, plt):
 @app.cell
 def _(ols, plot_ols_simd_ros, simd_concat_OHdf):
     plot_ols_simd_ros(ols, simd_concat_OHdf, spatial=False)
+    return
+
+
+@app.cell
+def _(ols_lag, plot_ols_simd_ros, simd_spatial_OHdf):
+    plot_ols_simd_ros(ols_lag, simd_spatial_OHdf, spatial=True)
+    return
+
+
+@app.cell
+def _():
     return
 
 
