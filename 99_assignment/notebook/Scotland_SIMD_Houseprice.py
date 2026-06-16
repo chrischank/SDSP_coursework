@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.6"
+__generated_with = "0.23.9"
 app = marimo.App()
 
 
@@ -17,8 +17,8 @@ def _():
     ###############################
     # Notebook for SDSP Assessment#
     # Maintainer: Christopher Chan#
-    # Version: 0.0.9              #
-    # Date: 2026-06-13            #
+    # Version: 0.0.10             #
+    # Date: 2026-06-16            #
     ###############################
 
     import re
@@ -300,7 +300,7 @@ def _(
 
         return simd_pastDF, simd_futureDF, DissolveSIMD_pastDF, DissolveSIMD_futureDF
 
-    return (simd_preprocessing,)
+    return DIFF_PERIOD, simd_preprocessing
 
 
 @app.cell
@@ -1235,7 +1235,7 @@ def _(mo):
     mo.md(r"""
     ### Modelling
     1. First I will perform an OLS modelling and look at the residual to see the results for absolute and differences
-    2. Then I will do the same with spatial lag added to both dataset.
+    2. Then I will do the same with spatial lag added to both dataset. The combined contiguity + KNN3 lag is built per period (year for the absolute model, diff-period for the diff model) so every council-period keeps its own neighbour average and the models are fit on the full panel.
     3. Once I have a performant model, I will use the rest of the ros data to predict the next set of simd domain
 
     #### OLS modelling
@@ -1323,15 +1323,25 @@ def _(pd, simd_concat_df):
 
 
 @app.function
-def generate_xvar(df):
-    ros_X_var = df.columns.drop(
-        ["Council_Code", "Total_Volume", "geometry"]
-        + [col for col in df.columns if col.startswith("VW")]
-        # + [col for col in df.columns if col.startswith("Year_Range")]
-        # + [col for col in df.columns if col.startswith("Funding_Status")]
-        # + [col for col in df.columns if col.startswith("Council_Area")]
-    )
+def generate_xvar(df, price_prefix="VW"):
+    # Identifiers / geometry are never predictors. Total_Volume only exists in
+    # the absolute frame, so drop only what is present (the diff frame omits it).
+    drop_cols = [
+        col
+        for col in ["Council_Code", "Total_Volume", "geometry"]
+        if col in df.columns
+    ]
 
+    # Drop the price response columns - the raw "VW_*" set for the absolute
+    # model and the "diff_VW_*" set for the diff model (both the modelled median
+    # and the mean we are not modelling) so they never leak in as predictors.
+    price_cols = [
+        col
+        for col in df.columns
+        if col.startswith(price_prefix) or col.startswith(f"diff_{price_prefix}")
+    ]
+
+    ros_X_var = df.columns.drop(drop_cols + price_cols)
     ros_X_var = [f"Q('{col}')" for col in ros_X_var]
 
     return ros_X_var
@@ -1357,32 +1367,60 @@ def _(mo):
 
 @app.cell
 def _(graph, pd):
-    def calculate_combine_lag(concat_df, group_col="Council_Code"):
-        xvar_cols = [col for col in concat_df.columns if col.startswith("weighted_")]
+    def calculate_combine_lag(
+        concat_df, group_col="Council_Code", period_col=None, xvar_prefix="weighted_"
+    ):
+        # Columns to spatially lag: weighted_* (absolute) or diff_weighted_* (diff).
+        xvar_cols = [col for col in concat_df.columns if col.startswith(xvar_prefix)]
 
-        agg_dict = {col: "first" for col in xvar_cols}
-        agg_dict["geometry"] = "first"
-
-        unique_geoms = (
-            concat_df.groupby(group_col).agg(agg_dict).set_geometry("geometry")
+        # Geometry is identical across periods, so build the combined
+        # contiguity + KNN3 graph once from one representative geometry per area.
+        base_geoms = (
+            concat_df.groupby(group_col)
+            .agg({"geometry": "first"})
+            .set_geometry("geometry")
         )
+        contiguity_graph = graph.Graph.build_contiguity(base_geoms)
+        knn3_graph = graph.Graph.build_knn(base_geoms.centroid, k=3)
+        combi_w = graph.Graph.union(contiguity_graph, knn3_graph).transform("r")
 
-        contiguity_graph = graph.Graph.build_contiguity(unique_geoms)
-        knn3_graph = graph.Graph.build_knn(unique_geoms.centroid, k=3)
+        lag_cols = [f"{col}_lag" for col in xvar_cols]
 
-        combi_graph = graph.Graph.union(contiguity_graph, knn3_graph)
-        combi_w = combi_graph.transform("r")
-
-        lag_cols = []
-        for col in xvar_cols:
-            lag_col_name = f"{col}_lag"
-            unique_geoms[lag_col_name] = combi_w.lag(unique_geoms[col])
-            lag_cols.append(lag_col_name)
-
-        # Join back with the original dataframe
-        spatial_concat_df = pd.merge(
-            concat_df, unique_geoms, on=[group_col, "geometry", *xvar_cols], how="left"
+        # The lagged variable changes every period (the SIMD rank, or its diff),
+        # so compute one lag value per (period, area). Collapsing to a single
+        # "first" value and merging back on the values themselves NaN'd out every
+        # row whose period differed - silently dropping 2/3 of the rows from the
+        # spatial regression. Grouping by period keeps all rows in the fit.
+        periods = (
+            [None] if period_col is None else list(concat_df[period_col].unique())
         )
+        merge_keys = [group_col] if period_col is None else [group_col, period_col]
+
+        lag_frames = []
+        for period in periods:
+            sub = (
+                concat_df
+                if period is None
+                else concat_df[concat_df[period_col] == period]
+            )
+            agg_dict = {col: "first" for col in xvar_cols}
+            agg_dict["geometry"] = "first"
+            area_vals = (
+                sub.groupby(group_col)
+                .agg(agg_dict)
+                .reindex(base_geoms.index)  # align to the graph node order
+                .set_geometry("geometry")
+            )
+            for col in xvar_cols:
+                area_vals[f"{col}_lag"] = combi_w.lag(area_vals[col])
+
+            frame = area_vals[lag_cols].reset_index()
+            if period is not None:
+                frame[period_col] = period
+            lag_frames.append(frame)
+
+        lag_df = pd.concat(lag_frames, ignore_index=True)
+        spatial_concat_df = pd.merge(concat_df, lag_df, on=merge_keys, how="left")
 
         return spatial_concat_df
 
@@ -1390,8 +1428,14 @@ def _(graph, pd):
 
 
 @app.cell
-def _(calculate_combine_lag, simd_concat_OHdf):
-    simd_spatial_OHdf = calculate_combine_lag(simd_concat_OHdf)
+def _(calculate_combine_lag, pd, simd_concat_df):
+    # Lag on the pre-one-hot frame so the per-period (Year_Range) grouping can
+    # give each year its own neighbour-averaged values, then one-hot encode.
+    simd_spatial_df = calculate_combine_lag(simd_concat_df, period_col="Year_Range")
+    simd_spatial_OHdf = pd.get_dummies(
+        simd_spatial_df,
+        columns=["Year_Range", "Funding_Status", "Council_Area"],
+    ).drop(columns=["index"])
 
     simd_spatial_OHdf.head()
     return (simd_spatial_OHdf,)
@@ -1409,15 +1453,17 @@ def _(simd_spatial_OHdf, smf):
 
 @app.cell
 def _(cx, esda, graph, mpatches, pd, plt):
-    def plot_ols_simd_ros(ols_model, OH_gdf, spatial: bool, figure_dir):
+    def plot_ols_simd_ros(
+        ols_model, OH_gdf, spatial: bool, figure_dir, target="VW_Median_Price", name=""
+    ):
         OH_gdf["Predicted"] = ols_model.predict(OH_gdf)
         OH_gdf["Residuals"] = ols_model.resid
 
         # Adding wkt for later join because I one-hot encoded the Council_Area
         OH_gdf["geom_wkt"] = OH_gdf.geometry.to_wkt()
 
-        price_vmin = min(OH_gdf["VW_Median_Price"].min(), OH_gdf["Predicted"].min())
-        price_vmax = max(OH_gdf["VW_Median_Price"].max(), OH_gdf["Predicted"].max())
+        price_vmin = min(OH_gdf[target].min(), OH_gdf["Predicted"].min())
+        price_vmax = max(OH_gdf[target].max(), OH_gdf["Predicted"].max())
 
         fig, axes = plt.subplots(1, 4, figsize=(25, 7))
         ax = axes.flatten()
@@ -1431,7 +1477,7 @@ def _(cx, esda, graph, mpatches, pd, plt):
         }
 
         OH_gdf.plot(
-            "VW_Median_Price",
+            target,
             legend=True,
             cmap="RdYlGn_r",
             ax=ax[0],
@@ -1439,7 +1485,7 @@ def _(cx, esda, graph, mpatches, pd, plt):
             vmin=price_vmin,
             vmax=price_vmax,
         )
-        ax[0].set_title("Actual VW Median Price")
+        ax[0].set_title(f"Actual {target}")
 
         OH_gdf.plot(
             "Predicted",
@@ -1450,7 +1496,7 @@ def _(cx, esda, graph, mpatches, pd, plt):
             vmin=price_vmin,
             vmax=price_vmax,
         )
-        ax[1].set_title("Predicted VW Median Price")
+        ax[1].set_title(f"Predicted {target}")
 
         OH_gdf.plot("Residuals", legend=True, cmap="RdBu", ax=ax[2], alpha=0.7)
         ax[2].set_title("Residuals")
@@ -1506,15 +1552,18 @@ def _(cx, esda, graph, mpatches, pd, plt):
         for i in range(4):
             cx.add_basemap(ax[i], source="CartoDB DarkMatter", crs=OH_gdf.crs)
 
-        title_suffix = "(Spatial Regression)" if spatial else ""
-        fig.suptitle(f"OLS Regression of SIMD on Median House Price - {title_suffix}")
+        title_suffix = "(Spatial Regression)" if spatial else "(Standard OLS)"
+        model_label = f"{name} " if name else ""
+        fig.suptitle(
+            f"{model_label}OLS Regression of SIMD on {target} - {title_suffix}"
+        )
 
         plt.tight_layout()
-        fig.savefig(
-            figure_dir / f"ols_residuals_{'spatial' if spatial else 'standard'}.png",
-            dpi=150,
-            bbox_inches="tight",
+        stem = (
+            f"ols_residuals_{name + '_' if name else ''}"
+            f"{'spatial' if spatial else 'standard'}.png"
         )
+        fig.savefig(figure_dir / stem, dpi=150, bbox_inches="tight")
         plt.show()
 
     return (plot_ols_simd_ros,)
@@ -1542,7 +1591,7 @@ def _(mo):
 
 @app.cell
 def _(DATA_FEATURE, Path, pd, plt, sns):
-    def plot_sme_boxplots(OH_gdf, OH_spatial_gdf, figure_dir):
+    def plot_sme_boxplots(OH_gdf, OH_spatial_gdf, figure_dir, name=""):
         dfs_to_concat = []
 
         # 1. Dictionary to easily label and loop through the dataframes
@@ -1562,7 +1611,9 @@ def _(DATA_FEATURE, Path, pd, plt, sns):
             )
             temp_df["Council_Area"] = temp_df["Council_Area"].str.replace(prefix, "")
 
-            filename = f"Residuals_{model_name}.geojson".replace(" ", "_")
+            filename = (
+                f"Residuals_{name + '_' if name else ''}{model_name}.geojson"
+            ).replace(" ", "_")
             if not Path(f"{DATA_FEATURE}/{filename}").exists():
                 temp_df.to_file(f"{DATA_FEATURE}/{filename}", driver="GeoJSON")
 
@@ -1594,13 +1645,17 @@ def _(DATA_FEATURE, Path, pd, plt, sns):
         )
 
         ax.axhline(0, color="black", linestyle="--", alpha=0.6)
-        ax.set_title("Comparison of Residuals: Standard OLS vs Spatial Regression")
+        title_label = f" ({name})" if name else ""
+        ax.set_title(
+            f"Comparison of Residuals: Standard OLS vs Spatial Regression{title_label}"
+        )
         ax.set_ylabel("Model Residuals")
         ax.set_xlabel("Council Area")
 
         plt.xticks(rotation=45, ha="right")
         plt.tight_layout()
-        fig.savefig(figure_dir / "residuals_boxplot.png", dpi=150, bbox_inches="tight")
+        stem = f"residuals_boxplot{'_' + name if name else ''}.png"
+        fig.savefig(figure_dir / stem, dpi=150, bbox_inches="tight")
         plt.show()
 
     return (plot_sme_boxplots,)
@@ -1642,19 +1697,19 @@ def _(simd_spatial_OHdf, smf):
 
 @app.cell
 def _(FIGURE, cx, pd, plt):
-    def plot_fixed_effects(fe_ols, fe_spareg, ols_gdf, spareg_gdf):
+    def plot_fixed_effects(fe_ols, fe_spareg, ols_gdf, spareg_gdf, name=""):
         # 1. Structure data with explicit string names for titles and column headers
         models_data = [
             ("Standard OLS", fe_ols, ols_gdf),
             ("Spatial Regression", fe_spareg, spareg_gdf)
         ]
-    
+
         # 2. Figure generation OUTSIDE the loop
         fig, axes = plt.subplots(1, 2, figsize=(20, 8))
         ax = axes.flatten()
 
         prefix = "Council_Area_"
-    
+
         for idx, (model_name, model, gdf) in enumerate(models_data):
             # Extract and clean index
 
@@ -1664,7 +1719,7 @@ def _(FIGURE, cx, pd, plt):
                 .str.replace(r"^Q\('(.*)'\)\[T\.True\]$", r"\1", regex=True)
                 .str.replace("Council_Area_", "", regex=False)
             )
-        
+
             max_effect = fixed_effects.abs().max()
 
             col_name = f"FE_{model_name.replace(' ', '_')}"
@@ -1683,7 +1738,7 @@ def _(FIGURE, cx, pd, plt):
                 right_index=True,
                 how="left",
             )
-        
+
             merged_gdf.plot(
                 col_name, 
                 legend=True, 
@@ -1695,11 +1750,13 @@ def _(FIGURE, cx, pd, plt):
             )
 
             cx.add_basemap(ax[idx], source="CartoDB DarkMatter", crs=merged_gdf.crs)
-        
-            ax[idx].set_title(f"{model_name} Fixed Effects")
+
+            title_label = f" ({name})" if name else ""
+            ax[idx].set_title(f"{model_name} Fixed Effects{title_label}")
 
         plt.tight_layout()
-        fig.savefig(FIGURE / "fixed_effects.png", dpi=150, bbox_inches="tight")
+        stem = f"fixed_effects{'_' + name if name else ''}.png"
+        fig.savefig(FIGURE / stem, dpi=150, bbox_inches="tight")
         plt.show()
 
     return (plot_fixed_effects,)
@@ -1714,6 +1771,247 @@ def _(
     simd_spatial_OHdf,
 ):
     plot_fixed_effects(fe_ols, fe_spareg, simd_concat_OHdf, simd_spatial_OHdf)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    #### SIMD House Price diff OLS
+    """)
+    return
+
+
+@app.cell
+def _(simd_concat_df):
+    simd_concat_df["Year_Range"].value_counts()
+    return
+
+
+@app.cell
+def _(DIFF_PERIOD, pd):
+    def calculate_ros_diff(df, diff: DIFF_PERIOD):
+        # Compare the argument `diff`, not the type alias `DIFF_PERIOD`. The old
+        # `DIFF_PERIOD == "12-16"` was always False, so both periods were
+        # computed as 2012-2015 -> 2016-2019 and came out identical.
+        if diff == "12-16":
+            df_past = df[df["Year_Range"] == "2008-2011"]
+            df_future = df[df["Year_Range"] == "2012-2015"]
+        else:
+            df_past = df[df["Year_Range"] == "2012-2015"]
+            df_future = df[df["Year_Range"] == "2016-2019"]
+
+        target_cols = [
+            col for col in df_past.columns if col.startswith("weighted")
+        ] + ["VW_Mean_Price", "VW_Median_Price"]
+
+        diff_df = pd.merge(
+            df_past,
+            df_future,
+            on=["Council_Area", "Council_Code", "geometry", "Funding_Status"],
+            suffixes=("_past", "_future"),
+        )
+
+        # future - past, matching the SIMD diff convention. SIMD ranks are
+        # "higher = better" (less deprived), so a positive value means the
+        # metric improved / increased over the period.
+        for col in target_cols:
+            diff_df["diff_" + col] = diff_df[col + "_future"] - diff_df[col + "_past"]
+
+        diff_df["diff_range"] = diff
+
+        cols_to_drop = diff_df.filter(regex=r"_past$|_future$").columns
+        diff_df = diff_df.drop(columns=cols_to_drop)
+
+        return diff_df
+
+    return (calculate_ros_diff,)
+
+
+@app.cell
+def _(DATA_FEATURE, Path, calculate_ros_diff, gpd, pd, simd_concat_df):
+    if Path(f"{DATA_FEATURE}/diff_simd_ros.geojson").exists():
+        print("diff_simd_ros.geojson already exists")
+        DiffROS_concat_df = gpd.read_file(f"{DATA_FEATURE}/diff_simd_ros.geojson")
+    else:
+        print("diff_simd_ros.geojson does not exist - creating")
+        DiffROS_1216 = calculate_ros_diff(simd_concat_df, diff="12-16")
+        DiffROS_1620 = calculate_ros_diff(simd_concat_df, diff="16-20")
+
+        DiffROS_concat_df = pd.concat(
+            [DiffROS_1216, DiffROS_1620], axis=0, ignore_index=True
+        )
+        DiffROS_concat_df.to_file(f"{DATA_FEATURE}/diff_simd_ros.geojson")
+
+    DiffROS_concat_df
+    return (DiffROS_concat_df,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    #### Diff OLS
+
+    Same modelling pipeline as the absolute house price, but the response is now
+    the per-period change in volume-weighted median price (`diff_VW_Median_Price`)
+    regressed on the per-period change in each weighted SIMD domain rank, plus the
+    funding-status, diff-period and council one-hot terms. The plotting helpers
+    are reused with `target="diff_VW_Median_Price"` and `name="diff"` so the diff
+    figures are written alongside (not over) the absolute ones.
+
+    All diffs are `future - past`, matching the SIMD diff convention: SIMD ranks
+    are "higher = better" (less deprived), so a positive change is an improvement
+    and a positive price diff is a rise. Read the diff residual/fixed-effect maps
+    in that direction - a positive fixed effect is a council whose price *rose*
+    by more than its SIMD-change profile alone predicts.
+    """)
+    return
+
+
+@app.cell
+def _(DiffROS_concat_df, pd):
+    # One-hot encode the diff categoricals (mirrors the absolute simd_concat_OHdf).
+    # diff_range is the period dummy (12-16 / 16-20), analogous to Year_Range.
+    DiffROS_OHdf = pd.get_dummies(
+        DiffROS_concat_df,
+        columns=["Funding_Status", "diff_range", "Council_Area"],
+    )
+    DiffROS_OHdf.head()
+    return (DiffROS_OHdf,)
+
+
+@app.cell
+def _(DiffROS_OHdf, smf):
+    formula_diff_simd_ros = (
+        f"diff_VW_Median_Price ~ {' + '.join(generate_xvar(DiffROS_OHdf))}"
+    )
+    ols_diff = smf.ols(formula_diff_simd_ros, data=DiffROS_OHdf).fit()
+    ols_diff.summary()
+    return (ols_diff,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    #### Diff OLS (Spatial)
+    """)
+    return
+
+
+@app.cell
+def _(DiffROS_concat_df, calculate_combine_lag, pd):
+    # Spatial lag of the SIMD-domain diffs, computed per diff period so both
+    # 12-16 and 16-20 keep their own neighbour-averaged change values.
+    diff_spatial_df = calculate_combine_lag(
+        DiffROS_concat_df, period_col="diff_range", xvar_prefix="diff_weighted_"
+    )
+    diff_spatial_OHdf = pd.get_dummies(
+        diff_spatial_df,
+        columns=["Funding_Status", "diff_range", "Council_Area"],
+    )
+
+    diff_spatial_OHdf.head()
+    return (diff_spatial_OHdf,)
+
+
+@app.cell
+def _(diff_spatial_OHdf, smf):
+    formula_diff_lag_simd_ros = (
+        f"diff_VW_Median_Price ~ {' + '.join(generate_xvar(diff_spatial_OHdf))}"
+    )
+    ols_diff_lag = smf.ols(formula_diff_lag_simd_ros, data=diff_spatial_OHdf).fit()
+    ols_diff_lag.summary()
+    return (ols_diff_lag,)
+
+
+@app.cell
+def _(DiffROS_OHdf, FIGURE, ols_diff, plot_ols_simd_ros):
+    plot_ols_simd_ros(
+        ols_diff,
+        DiffROS_OHdf,
+        spatial=False,
+        figure_dir=FIGURE,
+        target="diff_VW_Median_Price",
+        name="diff",
+    )
+    return
+
+
+@app.cell
+def _(FIGURE, diff_spatial_OHdf, ols_diff_lag, plot_ols_simd_ros):
+    plot_ols_simd_ros(
+        ols_diff_lag,
+        diff_spatial_OHdf,
+        spatial=True,
+        figure_dir=FIGURE,
+        target="diff_VW_Median_Price",
+        name="diff",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    #### Diff Spatial Mixed Effects
+    """)
+    return
+
+
+@app.cell
+def _(DiffROS_OHdf, FIGURE, diff_spatial_OHdf, plot_sme_boxplots):
+    plot_sme_boxplots(DiffROS_OHdf, diff_spatial_OHdf, figure_dir=FIGURE, name="diff")
+    return
+
+
+@app.cell
+def _(DiffROS_OHdf, smf):
+    # Council fixed effects for the diff model: the "- 1" turns the one-hot
+    # Council_Area_* columns into the full fixed-effect set. Predicted/Residuals/
+    # geom_wkt are dropped because plot_ols_simd_ros adds them to DiffROS_OHdf.
+    fe_diff_ols_xvar = generate_xvar(DiffROS_OHdf)
+    fe_diff_ols_xvar = [
+        x
+        for x in fe_diff_ols_xvar
+        if x not in ["Q('Predicted')", "Q('Residuals')", "Q('geom_wkt')"]
+    ]
+    formula_fe_diff_ols = f"diff_VW_Median_Price ~ {' + '.join(fe_diff_ols_xvar)} - 1"
+    fe_diff_ols = smf.ols(formula_fe_diff_ols, data=DiffROS_OHdf).fit()
+    fe_diff_ols.summary()
+    return (fe_diff_ols,)
+
+
+@app.cell
+def _(diff_spatial_OHdf, smf):
+    fe_diff_spareg_xvar = generate_xvar(diff_spatial_OHdf)
+    fe_diff_spareg_xvar = [
+        x
+        for x in fe_diff_spareg_xvar
+        if x not in ["Q('Predicted')", "Q('Residuals')", "Q('geom_wkt')"]
+    ]
+    formula_fe_diff_spareg = (
+        f"diff_VW_Median_Price ~ {' + '.join(fe_diff_spareg_xvar)} - 1"
+    )
+    fe_diff_spareg = smf.ols(formula_fe_diff_spareg, data=diff_spatial_OHdf).fit()
+    fe_diff_spareg.summary()
+    return (fe_diff_spareg,)
+
+
+@app.cell
+def _(
+    DiffROS_OHdf,
+    diff_spatial_OHdf,
+    fe_diff_ols,
+    fe_diff_spareg,
+    plot_fixed_effects,
+):
+    plot_fixed_effects(
+        fe_diff_ols,
+        fe_diff_spareg,
+        DiffROS_OHdf,
+        diff_spatial_OHdf,
+        name="diff",
+    )
     return
 
 
