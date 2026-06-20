@@ -429,7 +429,7 @@ def _(
 
     plt.tight_layout()
     fig.savefig(FIGURE / "simd_income_maps.png", dpi=150, bbox_inches="tight")
-    plt.show()
+    #plt.show()
     return
 
 
@@ -990,13 +990,7 @@ def _(FIGURE, SIMDdiff_1216, SIMDdiff_1620, moran_local, plot_lisa):
         diffcluster_SIMD1620, method="combine", name="diff_1620", figure_dir=FIGURE
     )
     combinediff_1216moran
-    return combinediff_1620moran, diffcluster_SIMD1216
-
-
-@app.cell
-def _(diffcluster_SIMD1216):
-    diffcluster_SIMD1216
-    return
+    return (combinediff_1620moran,)
 
 
 @app.cell
@@ -1013,18 +1007,18 @@ def _(mo):
     I have rolled-up the SIMD data into Council Areas, using a volume weighted approach for each year. I calculated the Moran's I foir each domain using a lower critical level of 0.1
 
     For absolute numbers:
-    - For all periods, the health domain consistently has the highest statistical significance in spatial autocorrelation, meanwhile, Income and Employment have experience some significance in spatial autocorrelation in year 2012 and 2016, but not in 2020.
-    - For period 2012 and 2016. There are more counts of High-High clustering in Health, Income and Employment than in other meaning that for Council Areas that are statistically significant, spatial effects are more pronounce when it comes to health, income, and employment when the council is above average and surrounding by areas of above average. However in 2020, Low-Low clustering has gained grounds, particularly in Health. These councils are concentrated in more deprived areas of Western Scotland.
-    - The Councils of Highlands, Shetlands, and Orkney Islands have the highest clustering for Health, Income and Employment domains, being above average and significance in their neighbouring affects.
+    - For all periods, the health domain consistently has the highest statistical significance in spatial autocorrelation, meanwhile, Income and Employment have experience some significance in spatial autocorrelation in year 2012 and 2016, but reduced in 2020.
+    - For period 2012 and 2016. There are more counts of High-High clustering in Health, Income and Employment than in other meaning that for Council Areas that are statistically significant, spatial effects are more pronounce when it comes to health, income, and employment when the council is above average and surrounding by areas of above average. However in 2020, Low-Low clustering has gained grounds, particularly in Crime. These councils are concentrated in Central Scotland.
+    - The Councils of Highlands, Shetlands, and Orkney Islands have the highest clustering for Health, Income, Crime and Employment domains, being above average and significance in their neighbouring affects.
 
     For relative differences:
-    - This is a significantly more interesting metric. Looking at the relative lineplots, we saw a smaller increase of ranking for 2016-2020 when compared to 2012-2016 for all domains. For the Highlands, Shetlands, and Orkney Islands, although aboslute rankings suggests they are consistently above average for Income and Employment, relative differences suggest that high absolute spatial relationship do not translate to relative. Particularly for Income and Employment, The Shetland and Orkeny Islands experiencing negative changes with signficance negatives changes in the surrounding areas. I.e. quality of life for Income and Employment domain are high but worsening.
-    - Meanwhile for Crime 2016-2020, relative differences in Low-Low clustering have gain grounds in South-East of Scotland, suggesting lower than average changes begets lower changes in crime in the surround areas. But this was not signficant in absolute ranking for 2012 and 2016, but we saw the border regions being significant in High-Low clustering. This might suggest that the border regions are experiencing increase in crime caused by neighbouring affects.
-    - The largest change came from Health, and particularly Income and Employment in period 2016-2020. Where we saw massive gains in relative spatial autocorrelatiojn in these domains, driven predominantly by High-High and Low-Low clustering. Where Central and Southern Scotland saw above average improvements and also in their neighbouring areas.
-    - Housing in the highland council were consistently high for 2016 and 2020 absolute with signficance in High-High clustering. However, relative differences clustering have worsen from Low-High to Low-Low for 2012-2016, 2016-2020 respectively. This might indicate that although the surrounding regions still have high housing availability, the changes from the below average surrounding areas are impacting Highlands particularly for 2016-2020.
-    - Aberdeen, Moray and Aberdeenshire is interesting as well, where in Health, Income, and Employment domain, it was higher than average surrounding by higher areas consistently. However, relative differences in clustering suggest that the improvement in Health and Employment was only for 2012-2016, but decrease to below average change and clustering (Low-Low) in 2016-2020.
+    - This is a significantly more interesting metric. Looking at the relative lineplots, we saw a smaller increase of ranking for Education and Geographic Access for 2016-2020 when compared to 2012-2016, while many other domains experienced a reduction in rank for most councils. Looking at cluster for diff for Highlands, Shetlands, and Orkney Islands, although aboslute rankings suggests they are consistently above average for Income and Employment, relative differences suggest that high absolute spatial relationship do not translate to relative. Particularly for Income and Employment, The Shetland and Orkeny Islands experiencing negative changes with signficance negatives changes in the surrounding areas. I.e. quality of life for Income and Employment domain are high but worsening.
+    - Meanwhile for Income, Employment, and Crime 2012-2016, relative differences in Low-Low clustering have gain grounds in the borders of Scotland, suggesting lower than average changes begets lower changes in these domains in the surround areas. But this was not signficant in absolute ranking for 2012 and 2016. This might suggest that the border regions are experiencing increase in crime, and negative income and employment outcome caused by neighbouring affects temporarily.
+    - The largest change came from Crime, and particularly Income and Employment in period 2012-2026. With income and employment domain experiencing further signicant spatial clustering in 2016-2020. Both Low-Low clustering and High-High clustering gaining grounds. But the council areas difference could not conclude whether there were spatial-temporal affects carried over from previous periods.
+    - Housing in the highland council were consistently high for 2016 and 2020 absolute with signficance in High-High clustering. However, relative differences clustering have worsen from Low-High to Low-Low for 2012-2016, 2016-2020 respectively. This might indicate that although the surrounding regions still have high housing availability, this might suggest that Housing availability for highlands is worsening.
+    - Aberdeen, Moray and Aberdeenshire is interesting as well, where in Income, and Employment domain, it was higher than average surrounding by higher areas consistently. However, relative differences in clustering suggest that the improvement in Health and Employment was only for 2012-2016, but decrease to below average change and clustering (Low-Low) in 2016-2020.
 
-    The result might indicate that the more affluent rural areas in the north of Scotland with strong autocorrelation might be experience negative changes recently. While more economically deprived areas of Western Central Belt have not experienced much changes at all. with the rest of the central belt being a mixed bag results. The borders and Dumfries and Galloway are also inconsisntent. Excluding spatial autocorrelation, we generally saw stagnation with 2016-2020 saw lower positive changes in improvement compared to 2012-2016. Growth in quality of life have generally reduced, with Crime seeing mixed result. Most significant was housing where there were little to no changes in ranking for 2016-2020. Employment and Income were both trending into the negative with 2016-2020, suggesting that income and employment metrics have worsen overall.
+    The result might indicate that the more affluent rural areas in the north of Scotland with strong autocorrelation might be experience negative changes recently. While more economically deprived areas of Western Scotland (Ayrshire) have not experienced much changes at all. with the rest of the central belt being a mixed bag results, with central scotland experiencing improvement in Income and Employment. The borders and Dumfries and Galloway are also inconsisntent. Excluding spatial autocorrelation, we generally saw stagnation with 2016-2020 saw lower positive changes in improvement or worsening compared to 2012-2016. Growth in quality of life have generally reduced, with Crime seeing mixed result. Most significant was housing where there were little to no changes in ranking for 2016-2020. Employment and Income were both trending into the negative with 2016-2020, suggesting that income and employment metrics have worsen overall.
     """)
     return
 
@@ -1063,18 +1057,6 @@ def _(DATA_RAW, pd):
         "Na h-Eileanan Siar", "Na h-Eileanan an Iar", regex=False
     )
     return (ros_salesDF,)
-
-
-@app.cell
-def _(simd_2012DF):
-    simd_2012DF
-    return
-
-
-@app.cell
-def _(ros_salesDF):
-    ros_salesDF
-    return
 
 
 @app.cell
@@ -1172,7 +1154,7 @@ def _(gpd, pd, ros_simd2012_df, ros_simd2016_df, ros_simd2020_df):
 
 @app.cell
 def _(ros_concat_df):
-    ros_concat_df
+    ros_concat_df.sample(8)
     return
 
 
@@ -1257,18 +1239,14 @@ def _(DATA_FEATURE, gpd, pd, re):
 
         for df in simd_df_list:
             # FIX 1: Use .tolist() to flatten the Index into standard strings
-            cols_to_keep = df.columns[:8].tolist() + ["Year_Range", "geometry"]
+            cols_to_keep = df.columns[:8].tolist() + ["Year_Range"]
             df_copy = df[cols_to_keep].copy()
 
-            # FIX 2: Account for all 11 columns to prevent ValueError: Length mismatch.
-            # This keeps column 0 unchanged, applies regex to 1-8, and appends the final 2.
-            col_0 = [df_copy.columns[0]]
             renamed_cols = [re.sub(r"\d{4}_", "", col) for col in df_copy.columns[1:8]]
-            df_copy.columns = col_0 + renamed_cols + ["Year_Range", "geometry"]
+            df_copy.columns = ["Council_Area"] + renamed_cols + ["Year_Range"]
 
             processed_df.append(df_copy)
 
-        # FIX 3: Reference df_2012.crs instead of the global simd_2012DF.crs
         simd_concat_df = pd.concat(processed_df, axis=0, ignore_index=True)
 
         simd_ros_df = pd.merge(
@@ -1370,11 +1348,10 @@ def _(graph, pd):
     def calculate_combine_lag(
         concat_df, group_col="Council_Code", period_col=None, xvar_prefix="weighted_"
     ):
-        # Columns to spatially lag: weighted_* (absolute) or diff_weighted_* (diff).
+        # Columns to calculate spatial lag: weighted_* (absolute) or diff_weighted_* (diff),
+        # Funding_Status_* (absolute) or diff_Funding_Status_* (diff)
         xvar_cols = [col for col in concat_df.columns if col.startswith(xvar_prefix)]
 
-        # Geometry is identical across periods, so build the combined
-        # contiguity + KNN3 graph once from one representative geometry per area.
         base_geoms = (
             concat_df.groupby(group_col)
             .agg({"geometry": "first"})
@@ -1386,11 +1363,6 @@ def _(graph, pd):
 
         lag_cols = [f"{col}_lag" for col in xvar_cols]
 
-        # The lagged variable changes every period (the SIMD rank, or its diff),
-        # so compute one lag value per (period, area). Collapsing to a single
-        # "first" value and merging back on the values themselves NaN'd out every
-        # row whose period differed - silently dropping 2/3 of the rows from the
-        # spatial regression. Grouping by period keeps all rows in the fit.
         periods = (
             [None] if period_col is None else list(concat_df[period_col].unique())
         )
@@ -1408,7 +1380,7 @@ def _(graph, pd):
             area_vals = (
                 sub.groupby(group_col)
                 .agg(agg_dict)
-                .reindex(base_geoms.index)  # align to the graph node order
+                .reindex(base_geoms.index)
                 .set_geometry("geometry")
             )
             for col in xvar_cols:
@@ -1437,7 +1409,7 @@ def _(calculate_combine_lag, pd, simd_concat_df):
         columns=["Year_Range", "Funding_Status", "Council_Area"],
     ).drop(columns=["index"])
 
-    simd_spatial_OHdf.head()
+    simd_spatial_OHdf.columns
     return (simd_spatial_OHdf,)
 
 
@@ -1584,7 +1556,7 @@ def _(FIGURE, ols_lag, plot_ols_simd_ros, simd_spatial_OHdf):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    #### Spatial Mixed Effects
+    #### Spatial Fixed Effects
     """)
     return
 
@@ -1783,12 +1755,6 @@ def _(mo):
 
 
 @app.cell
-def _(simd_concat_df):
-    simd_concat_df["Year_Range"].value_counts()
-    return
-
-
-@app.cell
 def _(DIFF_PERIOD, pd):
     def calculate_ros_diff(df, diff: DIFF_PERIOD):
         # Compare the argument `diff`, not the type alias `DIFF_PERIOD`. The old
@@ -1854,24 +1820,14 @@ def _(mo):
 
     Same modelling pipeline as the absolute house price, but the response is now
     the per-period change in volume-weighted median price (`diff_VW_Median_Price`)
-    regressed on the per-period change in each weighted SIMD domain rank, plus the
-    funding-status, diff-period and council one-hot terms. The plotting helpers
-    are reused with `target="diff_VW_Median_Price"` and `name="diff"` so the diff
-    figures are written alongside (not over) the absolute ones.
-
-    All diffs are `future - past`, matching the SIMD diff convention: SIMD ranks
-    are "higher = better" (less deprived), so a positive change is an improvement
-    and a positive price diff is a rise. Read the diff residual/fixed-effect maps
-    in that direction - a positive fixed effect is a council whose price *rose*
-    by more than its SIMD-change profile alone predicts.
+    modelled on the per-period change.
     """)
     return
 
 
 @app.cell
 def _(DiffROS_concat_df, pd):
-    # One-hot encode the diff categoricals (mirrors the absolute simd_concat_OHdf).
-    # diff_range is the period dummy (12-16 / 16-20), analogous to Year_Range.
+    # One hot encoding
     DiffROS_OHdf = pd.get_dummies(
         DiffROS_concat_df,
         columns=["Funding_Status", "diff_range", "Council_Area"],
@@ -1953,7 +1909,7 @@ def _(FIGURE, diff_spatial_OHdf, ols_diff_lag, plot_ols_simd_ros):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    #### Diff Spatial Mixed Effects
+    #### Diff Spatial Fixed Effects
     """)
     return
 
@@ -2012,6 +1968,48 @@ def _(
         diff_spatial_OHdf,
         name="diff",
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    #### OLS and spatial regression results
+
+    In total, 4 models were fitted against Volume Weighted Median Price:
+    1. OLS with absolute SIMD and ROS Funding Status
+    2. Spatial Regression with aboslute SIMD and ROS Funding Status
+    3. OLS with relative SIMD and ROS Funding Status
+    4. Spatial Regression with relative SIMD and ROS Funding Status
+
+    ##### Absolute
+    1. OLS withy absolute SIMD and ROS Funding Status: \
+    R2 = 0.938 \
+    Adjusted R2 = 0.928 \
+    Top 3 SIMD variables: Health (0.817), Employment (0.711), Income (0.673) \
+    ROS Funding Status: Mortgage Sales (2.015) > All properties (1.455) > Cash Sales (-0.079)
+
+    2. Spatial Regression with absolute SIMD and ROS Funding Status: \
+    R2 = 0.944 \
+    Adjusted R2 = 0.933 \
+    Top 3 SIMD variables: Education (1.578), Income (1.303), Geographic Access (0.963) \
+    Top 3 SIMD lag variables: Health_lag (3.406), Education_lag (2.286), Income_lag (1.419) \
+    ROS Funding Status: Mortgage Sales (-2.162) > All properties (-2.234) > Cash Sales (-2.433) \
+
+    ##### Relative
+    3. OLS with relative SIMD and ROS Funding Status: \
+    R2 = 0.719 \
+    Adjusted R2 = 0.645 \
+    Top 3 SIMD variables: Employment (3.323), Health (1.290), Housing (-0.138) \
+    ROS Funding Status: Mortgage Sales (1.757) > All properties (-1.002) > Cash Sales (-3.861) \
+
+    4. Spatial Regression with relative SIMD and ROS Funding Status: \
+    R2 = 0.754 \
+    Adjusted R2 = 0.676 \
+    Top 3 SIMD variables: Employment (3.844), Health (1.508), Education (-0.312) \
+    Top SIMD lag variables: Employment_lag (2.406), Education_lag (1.792), Health_lag (1.295) \
+    ROS Funding Status: Mortgaage Sales (2.663) > All properties (0.783) > Cash Sales (-1.164) \
+    """)
     return
 
 
