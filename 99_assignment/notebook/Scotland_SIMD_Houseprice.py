@@ -1976,39 +1976,58 @@ def _(mo):
     mo.md(r"""
     #### OLS and spatial regression results
 
-    In total, 4 models were fitted against Volume Weighted Median Price:
+    > Outcomes and statistics might vary slightly when the cells are re-run and models are re-fitted.
+
+    In total, 4 models were fitted against Volume Weighted Median Price and diff Volume Weighted Median Price:
     1. OLS with absolute SIMD and ROS Funding Status
     2. Spatial Regression with aboslute SIMD and ROS Funding Status
     3. OLS with relative SIMD and ROS Funding Status
     4. Spatial Regression with relative SIMD and ROS Funding Status
 
     ##### Absolute
-    1. OLS withy absolute SIMD and ROS Funding Status: \
+    1. OLS with absolute SIMD and ROS Funding Status: \
     R2 = 0.938 \
     Adjusted R2 = 0.928 \
-    Top 3 SIMD variables: Health (0.817), Employment (0.711), Income (0.673) \
-    ROS Funding Status: Mortgage Sales (2.015) > All properties (1.455) > Cash Sales (-0.079)
+    Top 3 SIMD variables, None are statistically significant: Health (0.817), Employment (0.711), Income (0.673) \
+    ROS Funding Status, Mortgage is statistically significant: Mortgage Sales (2.015) (p=0.045) >  All properties (1.455) > Cash Sales (-0.079)
+
+    Moran Cluster of the residual suggests that clustering of Median Price underprediction (High-High) in Renfrewshire (West of Glasgow) and overprediction (Low-Low) in the Highlands and Shetland.
 
     2. Spatial Regression with absolute SIMD and ROS Funding Status: \
     R2 = 0.944 \
     Adjusted R2 = 0.933 \
-    Top 3 SIMD variables: Education (1.578), Income (1.303), Geographic Access (0.963) \
-    Top 3 SIMD lag variables: Health_lag (3.406), Education_lag (2.286), Income_lag (1.419) \
-    ROS Funding Status: Mortgage Sales (-2.162) > All properties (-2.234) > Cash Sales (-2.433) \
+    Top 3 SIMD variables, None are statistically significant: Education (1.578), Income (1.303), Geographic Access (0.963) \
+    Top 3 SIMD lag variables, Health and Education are statistically signficant: Health_lag (3.406) (p=0.001), Education_lag (2.286) (p=0.023), Income_lag (1.419) \
+    ROS Funding Status, All statistically significant: Mortgage Sales (-2.1) (p=0.037) > All properties (-2.226) (p=0.027) > Cash Sales (-2.569) (p=0.011) \
+
+
 
     ##### Relative
     3. OLS with relative SIMD and ROS Funding Status: \
     R2 = 0.719 \
     Adjusted R2 = 0.645 \
-    Top 3 SIMD variables: Employment (3.323), Health (1.290), Housing (-0.138) \
-    ROS Funding Status: Mortgage Sales (1.757) > All properties (-1.002) > Cash Sales (-3.861) \
+    Top 3 SIMD variables, Employment is statistically significant: Employment (3.323) (p=0.001), Health (1.290), Housing (-0.138) \
+    ROS Funding Status, Mortgage and Cash Sales is statistically significant: Mortgage Sales (1.757) (p=0.081) > All properties (-1.002) > Cash Sales (-3.861) (p=0.000) \
 
     4. Spatial Regression with relative SIMD and ROS Funding Status: \
     R2 = 0.754 \
     Adjusted R2 = 0.676 \
-    Top 3 SIMD variables: Employment (3.844), Health (1.508), Education (-0.312) \
-    Top SIMD lag variables: Employment_lag (2.406), Education_lag (1.792), Health_lag (1.295) \
-    ROS Funding Status: Mortgaage Sales (2.663) > All properties (0.783) > Cash Sales (-1.164) \
+    Top 3 SIMD variables, Employment is statistically significant: Employment (3.844) (p=0.000), Health (1.508), Education (-0.312) \
+    Top 3 SIMD lag variables, Employment_lag, and Education_lag are statistically significant: Employment_lag (2.406) (p=0.017), Education_lag (1.792) (p=0.075), Health_lag (1.295) \
+    ROS Funding Status, Mortgage is statistically significant: Mortgaage Sales (2.663) (p=0.009) > All properties (0.783) > Cash Sales (-1.164) \
+
+    #### Interpretation:
+    Overall, spatial models do have a slight improvements when compared to non spatial OLS. The first 2 models that fitted the absolute SIMD and ROS values to median price showed high positive correlation when compared to the latter 2 models which fitted the relative diff in SIMD and ROS values to diff in median price.
+
+    Interestingly, in both relative and absolute models. Introduction of spatial lags for SIMD factors have improved the SIME variables t-score
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+ 
     """)
     return
 
