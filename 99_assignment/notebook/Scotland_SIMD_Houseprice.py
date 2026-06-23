@@ -17,7 +17,7 @@ def _():
     ###############################
     # Notebook for SDSP Assessment#
     # Maintainer: Christopher Chan#
-    # Version: 0.1.0             #
+    # Version: 0.1.1              #
     # Date: 2026-06-23            #
     ###############################
 
@@ -124,8 +124,45 @@ def _(
         simd_data_future: Path,
         diff: DIFF_PERIOD,
     ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]:
+        """Load, align and volume-weight a pair of SIMD years to council area.
+
+        Reads the Data Zone geometry/indicator files for an earlier and later
+        SIMD release, canonicalises the council names, dissolves each year up to
+        council area with a polygon-count weighting and assigns weighted deciles.
+
+        Parameters
+        ----------
+        simd_geom_past : Path
+            Shapefile of Data Zone geometries for the earlier SIMD year.
+        simd_data_past : Path
+            CSV of SIMD indicators for the earlier year.
+        simd_geom_future : Path
+            Shapefile of Data Zone geometries for the later SIMD year.
+        simd_data_future : Path
+            CSV of SIMD indicators for the later year.
+        diff : DIFF_PERIOD
+            Which year pair to process, either ``"12-16"`` or ``"16-20"``.
+
+        Returns
+        -------
+        tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]
+            The past and future Data Zone frames followed by their council-area
+            dissolved, weighted-decile frames.
+        """
 
         def _agg_dict(columns: list) -> dict:
+            """Build a ``{column: "sum"}`` aggregation map for a dissolve.
+
+            Parameters
+            ----------
+            columns : list
+                Column names to sum during the dissolve.
+
+            Returns
+            -------
+            dict
+                Mapping of each column name to the ``"sum"`` aggregation.
+            """
             agg_dict = {f"{col}": "sum" for col in columns}
 
             return agg_dict
@@ -133,6 +170,22 @@ def _(
         def _weighted_domain_dissolve(
             gdf: gpd.GeoDataFrame, dissolveby: str, domain_cols: list
         ) -> gpd.GeoDataFrame:
+            """Dissolve to a key and divide each domain by its polygon count.
+
+            Parameters
+            ----------
+            gdf : gpd.GeoDataFrame
+                Data Zone level frame to dissolve.
+            dissolveby : str
+                Column to dissolve on (the council area key).
+            domain_cols : list
+                SIMD domain columns to sum and then weight.
+
+            Returns
+            -------
+            gpd.GeoDataFrame
+                Dissolved frame with a ``weighted_<col>`` column per domain.
+            """
             gdf["polygon_count"] = 1
             dissolve_df = gdf.dissolve(
                 by=dissolveby, aggfunc=_agg_dict([*domain_cols, "polygon_count"])
@@ -478,7 +531,24 @@ def _(
     simd_2020DF,
 ):
     # First find the optimal k for original simd domain
-    def plot_k_elbow(year: int, dissolve: bool, figure_dir) -> plt.Figure:
+    def plot_k_elbow(year: int, dissolve: bool, figure_dir: "Path") -> plt.Figure:
+        """Plot Moran's I against K for each SIMD domain to find the elbow.
+
+        Parameters
+        ----------
+        year : int
+            SIMD year to plot (2012, 2016 or 2020).
+        dissolve : bool
+            If ``True`` use the council-area dissolved frame, else the Data Zone
+            frame.
+        figure_dir : Path
+            Directory the correlogram figure is saved into.
+
+        Returns
+        -------
+        plt.Figure
+            The correlogram figure with one subplot per domain.
+        """
         meta_cols = ["Data_Zone", "Council_Area", "Intermediate_Zone", "geometry"]
 
         domain_df_dict = {
@@ -609,7 +679,29 @@ def _(
         dissolve: bool,
         diff: bool,
         diff_df: Optional[gpd.GeoDataFrame] = None,
-    ):
+    ) -> gpd.GeoDataFrame:
+        """Attach local Moran's I cluster labels for each SIMD domain.
+
+        Builds a combined queen-contiguity + KNN3 weights matrix and runs a LISA
+        for the queen, KNN3 and combined graphs, writing the combined Moran's I,
+        p-value and the per-graph cluster labels back onto the frame.
+
+        Parameters
+        ----------
+        year : Optional[int]
+            SIMD year to select when ``diff`` is ``False``; ignored otherwise.
+        dissolve : bool
+            If ``True`` operate on the council-area dissolved frame.
+        diff : bool
+            If ``True`` operate on a difference frame supplied via ``diff_df``.
+        diff_df : Optional[gpd.GeoDataFrame], optional
+            Difference frame used when ``diff`` is ``True``, by default ``None``.
+
+        Returns
+        -------
+        gpd.GeoDataFrame
+            The input frame with added Moran's I, p-value and cluster columns.
+        """
         meta_cols = ["Data_Zone", "Council_Area", "Intermediate_Zone", "geometry"]
 
         domain_df_dict = {
@@ -658,9 +750,11 @@ def _(
         combi_w = combi_graph.transform("r")
 
         for idx, col in enumerate(domain_cols):
-            lisa_queen = esda.Moran_Local(domain_df[col], contiguity_r, permutations=99)
-            lisa_knn3 = esda.Moran_Local(domain_df[col], knn3_r, permutations=99)
-            lisa_combine = esda.Moran_Local(domain_df[col], combi_w, permutations=99)
+            lisa_queen = esda.Moran_Local(
+                domain_df[col], contiguity_r, permutations=999
+            )
+            lisa_knn3 = esda.Moran_Local(domain_df[col], knn3_r, permutations=999)
+            lisa_combine = esda.Moran_Local(domain_df[col], combi_w, permutations=999)
             domain_df[f"combine_moran'sI_{col}"] = lisa_combine.Is
             domain_df[f"combine_pvalue_{col}"] = lisa_combine.p_sim
             # Due to spatial aggregation, replaxing the p-value
@@ -684,7 +778,6 @@ def _(moran_local):
     cluster_Dissolve2012 = moran_local(2012, dissolve=True, diff=False)
     cluster_Dissolve2016 = moran_local(2016, dissolve=True, diff=False)
     cluster_Dissolve2020 = moran_local(2020, dissolve=True, diff=False)
-    cluster_Dissolve2012
     return cluster_Dissolve2012, cluster_Dissolve2016, cluster_Dissolve2020
 
 
@@ -692,7 +785,30 @@ def _(moran_local):
 def _(Literal, cx, plt, sns):
     GRAPH_TYPE = Literal["knn3", "queen", "combine"]
 
-    def plot_lisa(graph_df, method: GRAPH_TYPE, name, figure_dir):
+    def plot_lisa(
+        graph_df: "gpd.GeoDataFrame",
+        method: GRAPH_TYPE,
+        name: str,
+        figure_dir: "Path",
+    ) -> plt.Figure:
+        """Map the LISA cluster labels for one weights method across domains.
+
+        Parameters
+        ----------
+        graph_df : gpd.GeoDataFrame
+            Frame carrying ``<method>_cluster_*`` columns from ``moran_local``.
+        method : GRAPH_TYPE
+            Weights graph to plot: ``"knn3"``, ``"queen"`` or ``"combine"``.
+        name : str
+            Label used in the saved figure file name.
+        figure_dir : Path
+            Directory the LISA figure is saved into.
+
+        Returns
+        -------
+        plt.Figure
+            Figure of cluster maps plus a stacked cluster-count histogram.
+        """
         cluster_cols = [
             col for col in graph_df.columns if col.startswith(f"{method}_cluster")
         ]
@@ -795,6 +911,18 @@ def _(
 ):
     # Calculate the diff in volume weighted rank
     def calculate_weighted_diff(diff_year: int) -> gpd.GeoDataFrame:
+        """Compute the future-minus-past change in weighted SIMD ranks.
+
+        Parameters
+        ----------
+        diff_year : int
+            Period encoded as ``1216`` (2012->2016) or ``1620`` (2016->2020).
+
+        Returns
+        -------
+        gpd.GeoDataFrame
+            Council-area frame with a ``diff_<domain>_Rank`` column per domain.
+        """
         match diff_year:
             case 1216:
                 past_df = cluster_Dissolve2012
@@ -909,7 +1037,23 @@ def _(
     )
     simd_diffDFlong["domain"] = simd_diffDFlong["simd"].str.split("_").str[2]
 
-    def plot_abs_diff(simd_mergeDFlong, simd_diffDFlong):
+    def plot_abs_diff(
+        simd_mergeDFlong: pd.DataFrame, simd_diffDFlong: pd.DataFrame
+    ) -> None:
+        """Plot absolute and difference SIMD rank trajectories side by side.
+
+        Parameters
+        ----------
+        simd_mergeDFlong : pd.DataFrame
+            Long-format absolute weighted ranks with ``year`` and ``domain``.
+        simd_diffDFlong : pd.DataFrame
+            Long-format per-period rank differences with ``year`` and ``domain``.
+
+        Returns
+        -------
+        None
+            The figure is saved to disk and shown.
+        """
 
         fig, axes = plt.subplots(4, 4, figsize=(15, 15))
         ax = axes.flatten()
@@ -1008,21 +1152,19 @@ def _(mo):
     mo.md(r"""
     ### Stage 1: SIMD preprocessing summary
 
-    I have rolled-up the SIMD data into Council Areas, using a volume weighted approach for each year. I calculated the Moran's I foir each domain using a lower critical level of 0.1
+    I have rolled-up the SIMD data into Council Areas, using a volume weighted approach for each year. I calculated the Moran's I for each domain using a lower critical level of 0.1.
 
-    For absolute numbers:
-    - For all periods, the health domain consistently has the highest statistical significance in spatial autocorrelation, meanwhile, Income and Employment have experience some significance in spatial autocorrelation in year 2012 and 2016, but reduced in 2020.
-    - For period 2012 and 2016. There are more counts of High-High clustering in Health, Income and Employment than in other meaning that for Council Areas that are statistically significant, spatial effects are more pronounce when it comes to health, income, and employment when the council is above average and surrounding by areas of above average. However in 2020, Low-Low clustering has gained grounds, particularly in Crime. These councils are concentrated in Central Scotland.
-    - The Councils of Highlands, Shetlands, and Orkney Islands have the highest clustering for Health, Income, Crime and Employment domains, being above average and significance in their neighbouring affects.
+    #### 1. Absolute numbers
+    1. For all periods, the Health, Income, and Employment consistently has the highest proportion of councils with statistical significance clustering.
+    2. The Councils of Highlands, Shetlands, and Orkney Islands have experienced consistent clustering for Health, Income, Crime and Employment domains, being above average and significance in their neighbouring effects. This suggests that for many of the northern councils, their spatial relations are much more pronounced and less random than the rest of Scotland. Unsurprisingly since the Highlands and Islands have always been closely intertwined economically and culturally.
+    3. For the council of South Ayrshire and East Dunbartonshire in Western Central Belt, they experienced consistently Low-Low clustering for Health, Income, and Employment.
 
-    For relative differences:
-    - This is a significantly more interesting metric. Looking at the relative lineplots, we saw a smaller increase of ranking for Education and Geographic Access for 2016-2020 when compared to 2012-2016, while many other domains experienced a reduction in rank for most councils. Looking at cluster for diff for Highlands, Shetlands, and Orkney Islands, although aboslute rankings suggests they are consistently above average for Income and Employment, relative differences suggest that high absolute spatial relationship do not translate to relative. Particularly for Income and Employment, The Shetland and Orkeny Islands experiencing negative changes with signficance negatives changes in the surrounding areas. I.e. quality of life for Income and Employment domain are high but worsening.
-    - Meanwhile for Income, Employment, and Crime 2012-2016, relative differences in Low-Low clustering have gain grounds in the borders of Scotland, suggesting lower than average changes begets lower changes in these domains in the surround areas. But this was not signficant in absolute ranking for 2012 and 2016. This might suggest that the border regions are experiencing increase in crime, and negative income and employment outcome caused by neighbouring affects temporarily.
-    - The largest change came from Crime, and particularly Income and Employment in period 2012-2026. With income and employment domain experiencing further signicant spatial clustering in 2016-2020. Both Low-Low clustering and High-High clustering gaining grounds. But the council areas difference could not conclude whether there were spatial-temporal affects carried over from previous periods.
-    - Housing in the highland council were consistently high for 2016 and 2020 absolute with signficance in High-High clustering. However, relative differences clustering have worsen from Low-High to Low-Low for 2012-2016, 2016-2020 respectively. This might indicate that although the surrounding regions still have high housing availability, this might suggest that Housing availability for highlands is worsening.
-    - Aberdeen, Moray and Aberdeenshire is interesting as well, where in Income, and Employment domain, it was higher than average surrounding by higher areas consistently. However, relative differences in clustering suggest that the improvement in Health and Employment was only for 2012-2016, but decrease to below average change and clustering (Low-Low) in 2016-2020.
+    #### 2. Relative differences
+    1. This is a significantly more interesting metric. Looking at the relative lineplots, we saw a smaller overall increase of ranking for Health, Education and Geographic Access for 2016-2020 when compared to 2012-2016, while many other domains experienced a reduction in improvement for most councils. Looking at cluster for diff for Highlands, Shetlands, and Orkney Islands, although absolute rankings suggests they are consistently above average for Income and Employment, relative differences suggest that high absolute spatial relationship do not translate to relative. Particularly for Income and Employment, the Shetland and Orkney Islands experiencing negative changes with significant negative changes in the surrounding areas. I.e. quality of life for Income and Employment domain are high but worsening.
+    2. Meanwhile for Income, Employment, and Crime 2012-2016, relative differences in Low-Low clustering have gain grounds in the borders of Scotland, suggesting lower than average changes begets lower changes in these domains in the surround areas. But this was not significant in absolute ranking for 2012 and 2016. This might suggest that the border regions are experiencing increase in crime, and negative income and employment outcome caused by neighbouring effects temporarily.
+    3. The largest change came from Income, Employment, and Crime. We saw a reversal in changes trend particularly pronounced for employment where Dumfries and Galloway had lower than average changes to higher than average changes.
 
-    The result might indicate that the more affluent rural areas in the north of Scotland with strong autocorrelation might be experience negative changes recently. While more economically deprived areas of Western Scotland (Ayrshire) have not experienced much changes at all. with the rest of the central belt being a mixed bag results, with central scotland experiencing improvement in Income and Employment. The borders and Dumfries and Galloway are also inconsisntent. Excluding spatial autocorrelation, we generally saw stagnation with 2016-2020 saw lower positive changes in improvement or worsening compared to 2012-2016. Growth in quality of life have generally reduced, with Crime seeing mixed result. Most significant was housing where there were little to no changes in ranking for 2016-2020. Employment and Income were both trending into the negative with 2016-2020, suggesting that income and employment metrics have worsen overall.
+    **Overall:** The result might indicate that the more affluent rural areas in the north of Scotland with strong autocorrelation might be experience negative changes recently. While more economically deprived areas of Western Scotland (Ayrshire) have not experienced much changes at all, with the rest of the central belt being a mixed bag results, with central Scotland experiencing improvement in Income and Employment for 2016-2020. The borders and Dumfries and Galloway are also inconsistent. Excluding spatial autocorrelation, we generally saw stagnation with 2016-2020 saw lower positive changes in improvement or worsening compared to 2012-2016. Growth in quality of life have generally reduced, with Crime seeing mixed result. Most significant was housing where there were little to no changes in ranking for 2016-2020. Employment and Income were both trending into the negative with 2016-2020, suggesting that income and employment metrics have worsen overall.
     """)
     return
 
@@ -1065,7 +1207,22 @@ def _(DATA_RAW, pd):
 
 @app.cell
 def _(INFLATION_2011, itertools, mticker, pd, plt, sns):
-    def plot_ros_scatter(gdf, figure_dir):
+    def plot_ros_scatter(gdf: pd.DataFrame, figure_dir: "Path") -> None:
+        """Plot inflation-adjusted ROS price trends with SIMD-year markers.
+
+        Parameters
+        ----------
+        gdf : pd.DataFrame
+            ROS sales table with calendar year, council, funding status and
+            mean/median prices.
+        figure_dir : Path
+            Directory the scatter-grid figure is saved into.
+
+        Returns
+        -------
+        None
+            The figure is saved to disk and shown.
+        """
         # Apply inflation adjustment
         inflation = gdf["Calendar year"].map(INFLATION_2011)
         gdf_copy = gdf.copy()
@@ -1137,6 +1294,28 @@ def _(INFLATION_2011, gpd, pd):
     def ros_volume_weighted(
         df: pd.DataFrame, simd_year: int, gdf: gpd.GeoDataFrame
     ) -> gpd.GeoDataFrame:
+        """Volume-weight ROS prices over the four years before a SIMD year.
+
+        Filters sales to the ``simd_year - 4`` to ``simd_year`` window, applies
+        the 2011-base inflation adjustment and computes a volume-weighted mean
+        and median price per council area and funding status, then joins the
+        council geometry.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Raw ROS sales table (sheet C6).
+        simd_year : int
+            SIMD year the price window is aligned to (2012, 2016 or 2020).
+        gdf : gpd.GeoDataFrame
+            Council-area frame providing geometry to join on.
+
+        Returns
+        -------
+        gpd.GeoDataFrame
+            Volume-weighted prices per council area, funding status and year
+            range, with geometry attached.
+        """
 
         # 1. Standardize columns
         df = df.rename(
@@ -1167,7 +1346,19 @@ def _(INFLATION_2011, gpd, pd):
             case 2020:
                 mask_df["Year_Range"] = "2016-2019"
 
-        def _calculate_weighted_metrics(group):
+        def _calculate_weighted_metrics(group: pd.DataFrame) -> pd.Series:
+            """Volume-weight the mean and median price within one group.
+
+            Parameters
+            ----------
+            group : pd.DataFrame
+                Sales rows for a single council/funding-status/year-range group.
+
+            Returns
+            -------
+            pd.Series
+                The volume-weighted mean, weighted median and total volume.
+            """
             w = group["Volume"]
             w_sum = w.sum()
 
@@ -1234,7 +1425,25 @@ def _(ros_concat_df):
 @app.cell
 def _(cx, np, plt):
     # Lets plot and explore the volume weighted average price for different funding status
-    def plot_house_price(vw_gdf, average: str, figure_dir):
+    def plot_house_price(
+        vw_gdf: "gpd.GeoDataFrame", average: str, figure_dir: "Path"
+    ) -> None:
+        """Map a volume-weighted price column across funding status and period.
+
+        Parameters
+        ----------
+        vw_gdf : gpd.GeoDataFrame
+            Volume-weighted price frame from ``ros_volume_weighted``.
+        average : str
+            Price column to map, ``"VW_Mean_Price"`` or ``"VW_Median_Price"``.
+        figure_dir : Path
+            Directory the price map figure is saved into.
+
+        Returns
+        -------
+        None
+            The figure is saved to disk and shown.
+        """
         fig, axes = plt.subplots(3, 3, figsize=(15, 15))
         ax = axes.flatten()
         idx = 0
@@ -1300,7 +1509,34 @@ def _(mo):
 
 @app.cell
 def _(DATA_FEATURE, gpd, pd, re):
-    def ols_preprocessing(df_2012, df_2016, df_2020, ros_df):
+    def ols_preprocessing(
+        df_2012: gpd.GeoDataFrame,
+        df_2016: gpd.GeoDataFrame,
+        df_2020: gpd.GeoDataFrame,
+        ros_df: gpd.GeoDataFrame,
+    ) -> gpd.GeoDataFrame:
+        """Stack the three SIMD years and join the ROS prices for modelling.
+
+        Trims each dissolved SIMD year to its first eight columns, strips the
+        year from the domain names, concatenates the years and merges the
+        volume-weighted ROS prices on council area and year range.
+
+        Parameters
+        ----------
+        df_2012 : gpd.GeoDataFrame
+            Dissolved SIMD 2012 frame.
+        df_2016 : gpd.GeoDataFrame
+            Dissolved SIMD 2016 frame.
+        df_2020 : gpd.GeoDataFrame
+            Dissolved SIMD 2020 frame.
+        ros_df : gpd.GeoDataFrame
+            Concatenated volume-weighted ROS price frame.
+
+        Returns
+        -------
+        gpd.GeoDataFrame
+            The joined SIMD/ROS modelling frame, also written to disk.
+        """
         simd_df_list = [df_2012, df_2016, df_2020]
 
         # Assign new columns directly
@@ -1371,7 +1607,25 @@ def _(pd, simd_concat_df):
 
 
 @app.function
-def generate_xvar(df, price_prefix="VW"):
+def generate_xvar(df: "pd.DataFrame", price_prefix: str = "VW") -> list[str]:
+    """Build the patsy predictor list, dropping identifiers and the response.
+
+    Excludes identifier/geometry columns and any price response columns (the raw
+    ``<prefix>_*`` set and the ``diff_<prefix>_*`` set) so they cannot leak in as
+    predictors, then wraps each remaining column in ``Q('...')`` for patsy.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        One-hot encoded modelling frame.
+    price_prefix : str, optional
+        Prefix identifying the price response columns, by default ``"VW"``.
+
+    Returns
+    -------
+    list[str]
+        Patsy-quoted predictor column names.
+    """
     # Identifiers / geometry are never predictors. Total_Volume only exists in
     # the absolute frame, so drop only what is present (the diff frame omits it).
     drop_cols = [
@@ -1414,8 +1668,34 @@ def _(mo):
 @app.cell
 def _(graph, pd):
     def calculate_combine_lag(
-        concat_df, group_col="Council_Code", period_col=None, xvar_prefix="weighted_"
-    ):
+        concat_df: "gpd.GeoDataFrame",
+        group_col: str = "Council_Code",
+        period_col: "str | None" = None,
+        xvar_prefix: str = "weighted_",
+    ) -> "gpd.GeoDataFrame":
+        """Add combined contiguity + KNN3 spatial lags of the predictor columns.
+
+        Builds one combined weights matrix from the per-council geometries and,
+        for each period, lags every ``xvar_prefix`` column so each council-period
+        keeps its own neighbour-averaged value, then merges the lags back.
+
+        Parameters
+        ----------
+        concat_df : gpd.GeoDataFrame
+            Long modelling frame before one-hot encoding.
+        group_col : str, optional
+            Column identifying each area, by default ``"Council_Code"``.
+        period_col : str | None, optional
+            Column splitting the panel into periods; ``None`` lags the whole
+            frame at once, by default ``None``.
+        xvar_prefix : str, optional
+            Prefix of the columns to lag, by default ``"weighted_"``.
+
+        Returns
+        -------
+        gpd.GeoDataFrame
+            ``concat_df`` with an added ``<col>_lag`` column per lagged predictor.
+        """
         # Columns to calculate spatial lag: weighted_* (absolute) or diff_weighted_* (diff),
         # Funding_Status_* (absolute) or diff_Funding_Status_* (diff)
         xvar_cols = [col for col in concat_df.columns if col.startswith(xvar_prefix)]
@@ -1490,8 +1770,39 @@ def _(simd_spatial_OHdf, smf):
 @app.cell
 def _(cx, esda, graph, mpatches, pd, plt):
     def plot_ols_simd_ros(
-        ols_model, OH_gdf, spatial: bool, figure_dir, target="VW_Median_Price", name=""
-    ):
+        ols_model: "RegressionResultsWrapper",
+        OH_gdf: "gpd.GeoDataFrame",
+        spatial: bool,
+        figure_dir: "Path",
+        target: str = "VW_Median_Price",
+        name: str = "",
+    ) -> None:
+        """Map actual vs predicted price, residuals and a residual LISA.
+
+        Predicts onto the one-hot frame, then draws four panels (actual,
+        predicted, residuals and the combined-weights Moran cluster of the
+        residuals) and saves the figure.
+
+        Parameters
+        ----------
+        ols_model : RegressionResultsWrapper
+            Fitted statsmodels OLS results to predict and read residuals from.
+        OH_gdf : gpd.GeoDataFrame
+            One-hot encoded frame the model was fit on (carries geometry).
+        spatial : bool
+            Whether this is the spatial-lag model, used for titles/file names.
+        figure_dir : Path
+            Directory the residual figure is saved into.
+        target : str, optional
+            Response column being mapped, by default ``"VW_Median_Price"``.
+        name : str, optional
+            Optional label (e.g. ``"diff"``) for titles and file names.
+
+        Returns
+        -------
+        None
+            The figure is saved to disk and shown.
+        """
         OH_gdf["Predicted"] = ols_model.predict(OH_gdf)
         OH_gdf["Residuals"] = ols_model.resid
 
@@ -1556,7 +1867,7 @@ def _(cx, esda, graph, mpatches, pd, plt):
         combi_w = combi_graph.transform("r")
 
         resid_lisa = esda.Moran_Local(
-            unique_geoms["Residuals"], combi_w, permutations=99
+            unique_geoms["Residuals"], combi_w, permutations=999
         )
         unique_geoms["combine_cluster_resid"] = resid_lisa.get_cluster_labels(
             crit_value=0.1
@@ -1627,7 +1938,34 @@ def _(mo):
 
 @app.cell
 def _(DATA_FEATURE, Path, pd, plt, sns):
-    def plot_sme_boxplots(OH_gdf, OH_spatial_gdf, figure_dir, name=""):
+    def plot_sme_boxplots(
+        OH_gdf: "gpd.GeoDataFrame",
+        OH_spatial_gdf: "gpd.GeoDataFrame",
+        figure_dir: Path,
+        name: str = "",
+    ) -> None:
+        """Compare per-council residual spread for the OLS and spatial models.
+
+        De-dummifies the council columns of both frames, writes each residual
+        frame to disk and draws a council-ordered boxplot of residuals split by
+        model type.
+
+        Parameters
+        ----------
+        OH_gdf : gpd.GeoDataFrame
+            One-hot frame with residuals from the standard OLS model.
+        OH_spatial_gdf : gpd.GeoDataFrame
+            One-hot frame with residuals from the spatial regression model.
+        figure_dir : Path
+            Directory the boxplot figure is saved into.
+        name : str, optional
+            Optional label (e.g. ``"diff"``) for the title and file name.
+
+        Returns
+        -------
+        None
+            The figure is saved to disk and shown.
+        """
         dfs_to_concat = []
 
         # 1. Dictionary to easily label and loop through the dataframes
@@ -1737,7 +2075,37 @@ def _(simd_spatial_OHdf, smf):
 
 @app.cell
 def _(FIGURE, cx, pd, plt):
-    def plot_fixed_effects(fe_ols, fe_spareg, ols_gdf, spareg_gdf, name=""):
+    def plot_fixed_effects(
+        fe_ols: "RegressionResultsWrapper",
+        fe_spareg: "RegressionResultsWrapper",
+        ols_gdf: "gpd.GeoDataFrame",
+        spareg_gdf: "gpd.GeoDataFrame",
+        name: str = "",
+    ) -> None:
+        """Map the council fixed effects of the OLS and spatial models.
+
+        Extracts the ``Council_Area`` fixed-effect coefficients from each fitted
+        model, joins them onto the de-dummified council geometries and maps the
+        two side by side on a shared diverging scale.
+
+        Parameters
+        ----------
+        fe_ols : RegressionResultsWrapper
+            Fitted standard-OLS fixed-effects model.
+        fe_spareg : RegressionResultsWrapper
+            Fitted spatial-regression fixed-effects model.
+        ols_gdf : gpd.GeoDataFrame
+            One-hot frame providing geometry for the OLS model.
+        spareg_gdf : gpd.GeoDataFrame
+            One-hot frame providing geometry for the spatial model.
+        name : str, optional
+            Optional label (e.g. ``"diff"``) for titles and the file name.
+
+        Returns
+        -------
+        None
+            The figure is saved to disk and shown.
+        """
         # 1. Structure data with explicit string names for titles and column headers
         models_data = [
             ("Standard OLS", fe_ols, ols_gdf),
@@ -1820,7 +2188,27 @@ def _(mo):
 
 @app.cell
 def _(DIFF_PERIOD, pd):
-    def calculate_ros_diff(df, diff: DIFF_PERIOD):
+    def calculate_ros_diff(
+        df: "gpd.GeoDataFrame", diff: DIFF_PERIOD
+    ) -> "gpd.GeoDataFrame":
+        """Compute the future-minus-past change in SIMD and ROS metrics.
+
+        Selects the past and future year ranges for the requested period and
+        differences every weighted-SIMD and volume-weighted price column,
+        following the "higher = improved" SIMD convention.
+
+        Parameters
+        ----------
+        df : gpd.GeoDataFrame
+            Joined SIMD/ROS frame spanning all year ranges.
+        diff : DIFF_PERIOD
+            Period to difference, ``"12-16"`` or ``"16-20"``.
+
+        Returns
+        -------
+        gpd.GeoDataFrame
+            One row per council/funding status with ``diff_*`` change columns.
+        """
         # Compare the argument `diff`, not the type alias `DIFF_PERIOD`. The old
         # `DIFF_PERIOD == "12-16"` was always False, so both periods were
         # computed as 2012-2015 -> 2016-2019 and came out identical.
@@ -2040,67 +2428,60 @@ def _(mo):
 
     In total, 4 models were fitted against Volume Weighted Median Price and diff Volume Weighted Median Price:
     1. OLS with absolute SIMD and ROS Funding Status
-    2. Spatial Regression with aboslute SIMD and ROS Funding Status
+    2. Spatial Regression with absolute SIMD and ROS Funding Status
     3. OLS with relative SIMD and ROS Funding Status
     4. Spatial Regression with relative SIMD and ROS Funding Status
 
+    > Residuals are defined as Actual - Predicted.
+    > Overprediction is Actual < Predicted (negative residual); underprediction is Actual > Predicted (positive residual).
+
     ##### Absolute
 
+    1. **OLS with absolute SIMD and ROS Funding Status**
+       - R2 = 0.938
+       - Adjusted R2 = 0.928
+       - Top 3 SIMD variables, None are statistically significant: Health (0.817), Employment (0.711), Income (0.673)
+       - ROS Funding Status, Mortgage is statistically significant: Mortgage Sales (2.015) (p=0.045) > All properties (1.455) > Cash Sales (-0.079)
+       - Moran cluster of the residuals suggests clustering of Median Price underprediction (High-High) in Renfrewshire (West of Glasgow) and South Lanarkshire, and overprediction (Low-Low) in the Highlands and Shetland.
 
-    > Residual is defined as Actual - Predicted
-    > Where overprediction is Actual < Predicted (negative residual) and underprediction is Actual > Predicted (positive residual)
+    2. **Spatial Regression with absolute SIMD and ROS Funding Status**
+       - R2 = 0.944
+       - Adjusted R2 = 0.933
+       - Top 3 SIMD variables, None are statistically significant: Education (1.578), Income (1.303), Geographic Access (0.963)
+       - Top 3 SIMD lag variables, Health and Education are statistically significant: Health_lag (3.406) (p=0.001), Education_lag (2.286) (p=0.023), Income_lag (1.419)
+       - ROS Funding Status, All statistically significant: Mortgage Sales (-2.1) (p=0.037) > All properties (-2.226) (p=0.027) > Cash Sales (-2.569) (p=0.011)
+       - Moran cluster of the residuals suggests an addition of Aberdeenshire and Orkney Island for Median Price overprediction (Low-Low), while adding neighbouring councils of Renfrewshire, Glasgow, and North Lanarkshire for underprediction.
 
-    1. OLS with absolute SIMD and ROS Funding Status: \
-    R2 = 0.938 \
-    Adjusted R2 = 0.928 \
-    Top 3 SIMD variables, None are statistically significant: Health (0.817), Employment (0.711), Income (0.673) \
-    ROS Funding Status, Mortgage is statistically significant: Mortgage Sales (2.015) (p=0.045) >  All properties (1.455) > Cash Sales (-0.079)
-
-    Moran Cluster of the residual suggests that clustering of Median Price underprediction (High-High) in Renfrewshire (West of Glasgow) and overprediction (Low-Low) in the Highlands and Shetland.
-
-    2. Spatial Regression with absolute SIMD and ROS Funding Status: \
-    R2 = 0.944 \
-    Adjusted R2 = 0.933 \
-    Top 3 SIMD variables, None are statistically significant: Education (1.578), Income (1.303), Geographic Access (0.963) \
-    Top 3 SIMD lag variables, Health and Education are statistically signficant: Health_lag (3.406) (p=0.001), Education_lag (2.286) (p=0.023), Income_lag (1.419) \
-    ROS Funding Status, All statistically significant: Mortgage Sales (-2.1) (p=0.037) > All properties (-2.226) (p=0.027) > Cash Sales (-2.569) (p=0.011) \
-
-    Spatial features suggests an addition of Aberdeenshire and Orkney Island for Median Price overprediction, while adding neighbouring councils of Renfrewshire, surrounding the Western Scottish central belt for underprediction.
-
-    This is confirmed by the Residual boxplot comparing the OLS and Spatial Regression models. Overpredicted councils generally have higher variances, they are clustered in the more afflent councils of Aberdeenshire, Edinburgh, and Eatst Lothian etc. Both at the tail end of council that deviate from the median, the spatial regression model has a higher variance when compared to the standard OLS. Suggesting that the spatial regression model is better at capturing the relationships for councils that are neither afflent nor deprived.
+    This is confirmed by the residuals boxplot comparing the OLS and Spatial Regression models. Overpredicted councils generally have higher variances, they are clustered in the more afflent councils of Aberdeenshire, Edinburgh, and East Lothian etc. Both at the tail end of council that deviate from the median, the spatial regression model has a higher variance at tail end when compared to the standard OLS. The middle of the distribution is a mixed bag results trending towards lower variance towards the more deprived Suggesting that the spatial regression model is better at capturing the relationships for councils that are in the deprived-middle, neither afflent nor deprived.
 
     ##### Relative
-    3. OLS with relative SIMD and ROS Funding Status: \
-    R2 = 0.719 \
-    Adjusted R2 = 0.645 \
-    Top 3 SIMD variables, Employment is statistically significant: Employment (3.323) (p=0.001), Health (1.290), Housing (-0.138) \
-    ROS Funding Status, Mortgage and Cash Sales is statistically significant: Mortgage Sales (1.757) (p=0.081) > All properties (-1.002) > Cash Sales (-3.861) (p=0.000) \
 
-    Moran residuals for the relative OLS model is only significant for the underprediction Falkirk but insignficant for the rest.
+    3. **OLS with relative SIMD and ROS Funding Status**
+       - R2 = 0.719
+       - Adjusted R2 = 0.645
+       - Top 3 SIMD variables, Employment is statistically significant: Employment (3.323) (p=0.001), Health (1.290), Housing (-0.138)
+       - ROS Funding Status, Mortgage and Cash Sales is statistically significant: Mortgage Sales (1.757) (p=0.081) > All properties (-1.002) > Cash Sales (-3.861) (p=0.000)
+       - Moran cluster of the residuals for the relative OLS model is only significant for the underprediction Falkirk and Clackmannanshire but insignificant for the rest.
 
-    4. Spatial Regression with relative SIMD and ROS Funding Status: \
-    R2 = 0.754 \
-    Adjusted R2 = 0.676 \
-    Top 3 SIMD variables, Employment is statistically significant: Employment (3.844) (p=0.000), Health (1.508), Education (-0.312) \
-    Top 3 SIMD lag variables, Employment_lag, and Education_lag are statistically significant: Employment_lag (2.406) (p=0.017), Education_lag (1.792) (p=0.075), Health_lag (1.295) \
-    ROS Funding Status, Mortgage is statistically significant: Mortgaage Sales (2.663) (p=0.009) > All properties (0.783) > Cash Sales (-1.164) \
+    4. **Spatial Regression with relative SIMD and ROS Funding Status**
+       - R2 = 0.754
+       - Adjusted R2 = 0.676
+       - Top 3 SIMD variables, Employment is statistically significant: Employment (3.844) (p=0.000), Health (1.508), Education (-0.312)
+       - Top 3 SIMD lag variables, Employment_lag and Education_lag are statistically significant: Employment_lag (2.406) (p=0.017), Education_lag (1.792) (p=0.075), Health_lag (1.295)
+       - ROS Funding Status, Mortgage is statistically significant: Mortgage Sales (2.663) (p=0.009) > All properties (0.783) > Cash Sales (-1.164)
+       - Moran cluster of the residuals suggests an underprediction of change in price for much of Central East of Scotland while overprediction for the Highlands, Orkney, Shetland, Na h-Eileanan an Iar, and Aberdeenshire.
 
-    Spatial features suggests an underprediction of change in price for much of Central East of Scotland while overprediction for the Highlands and Orkney.
+    When interpreting the residul boxplots the difference is interesting that only for the underpredicted right tail (affluent councils), the spatial regression model have higher variances than the OLS model. But for the overpredicted left tail (affluent council), the spatial regression model have lower variance, the effect was particularly pronounced for East Lothian. This means that the spatial regression of relative difference is better at capturing relationships for affluent councils, with mixed results in the middle, but not as good at capturing deprived councils.
 
-    When interpreting the residul boxplots the difference is interesting that only for the underpredicted right tail (affluent councils), the spatial regression model have higher variances than the OLS model. But for the overpredicted left tail (affluent council), the spatial regression model have slighly lower variance, but the effect was particularly pronounced for East Lothian.
+    ##### Overall interpretation
 
-    #### Interpretation:
     Overall, spatial models do have a slight improvements when compared to non spatial OLS. The first 2 models that fitted the absolute SIMD and ROS values to median price showed high positive correlation when compared to the latter 2 models which fitted the relative diff in SIMD and ROS values to diff in median price.
 
-    Interestingly, in both relative and absolute models. Introduction of spatial lags for SIMD factors have improved the SIME variables t-score
-    """)
-    return
+    Interestingly, in both relative and absolute models. Introduction of spatial lags for SIMD factors have improved the SIME variables t-score. For SIMD values, statistical significance is rare in the SIMD variables, but the SIMD lag variables are more likely to be statistically significant. For the ROS Funding Status variables.
 
+    > Aberdeen and Aberdeenshire are councils that have historically been affluent due to the area proximity to the North Sea Oil and Gas industry. It is remote and overly relied its source of wealth from this single source of industry.
 
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
- 
+    Looking at the timeseries of the ROS price data, we do see the Council of Aberdeen and Aberdeenshire clearly deviated from the sinusoidal trend of dipping after the financial crisis and then recovering, reaching the apex of the curve in 2022. Focusing on Aberdeen and Aberdeenshire, we saw that the council started strong earlier this decade but have experienced Low-Low clustering for both absolute and relative for Income and Employment. Ths spatial regression model thus therefore overpredicted on the median price and it's changes. With employment being statistically signficant for both relative models as well as the lag, we can perhaps draw some conclusions that the changes in employment could have influenced the drop in median price.
     """)
     return
 
