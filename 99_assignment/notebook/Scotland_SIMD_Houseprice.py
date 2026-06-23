@@ -17,17 +17,19 @@ def _():
     ###############################
     # Notebook for SDSP Assessment#
     # Maintainer: Christopher Chan#
-    # Version: 0.0.10             #
-    # Date: 2026-06-16            #
+    # Version: 0.1.0             #
+    # Date: 2026-06-23            #
     ###############################
 
     import re
     import sys
     import esda
+    import itertools
     import numpy as np
     import pandas as pd
     import geopandas as gpd
     import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
     import matplotlib.patches as mpatches
     import contextily as cx
     import seaborn as sns
@@ -70,7 +72,9 @@ def _():
         esda,
         gpd,
         graph,
+        itertools,
         mpatches,
+        mticker,
         np,
         pd,
         plt,
@@ -429,7 +433,7 @@ def _(
 
     plt.tight_layout()
     fig.savefig(FIGURE / "simd_income_maps.png", dpi=150, bbox_inches="tight")
-    #plt.show()
+    # plt.show()
     return
 
 
@@ -1060,6 +1064,75 @@ def _(DATA_RAW, pd):
 
 
 @app.cell
+def _(INFLATION_2011, itertools, mticker, pd, plt, sns):
+    def plot_ros_scatter(gdf, figure_dir):
+        # Apply inflation adjustment
+        inflation = gdf["Calendar year"].map(INFLATION_2011)
+        gdf_copy = gdf.copy()
+        gdf_copy["Mean residential property price (£)"] *= inflation
+        gdf_copy["Median residential property price (£)"] *= inflation
+
+        melted_gdf = pd.melt(
+            gdf_copy,
+            id_vars=["Calendar year", "Local authority", "Funding status"],
+            value_vars=[
+                "Median residential property price (£)",
+                "Mean residential property price (£)",
+            ],
+            var_name="Price Stat",
+            value_name="Adjusted Price (£)",
+        )
+
+        melted_gdf["Price Stat"] = melted_gdf["Price Stat"].str.replace(
+            " residential property price (£)", ""
+        )
+
+        n = gdf["Local authority"].nunique()
+        markers = ["o", "s", "D", "^", "v", "<", ">", "p", "*", "h", "H", "P", "X", "d"]
+
+        mlist = list(itertools.islice(itertools.cycle(markers), n))
+
+        g = sns.lmplot(
+            data=melted_gdf,
+            x="Calendar year",
+            y="Adjusted Price (£)",
+            hue="Local authority",
+            col="Funding status",
+            row="Price Stat",
+            markers=mlist,
+            ci=None,
+            height=5,
+            aspect=1.2,
+            legend=True,
+            fit_reg=True,
+            order=3,
+            facet_kws={"margin_titles": True},
+        )
+
+        simd_years = [2012, 2016, 2020]
+        linestyles = [":", "--", "-."]
+
+        for ax in g.axes.flat:
+            for year, style in zip(simd_years, linestyles):
+                ax.axvline(x=year, color="black", linestyle=style, zorder=0)
+                ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+
+        g.set_axis_labels("Calendar year", "Adjusted Price (£)")
+
+        # Save and display
+        g.fig.savefig(figure_dir / "ros_scatter_grid.png", dpi=150, bbox_inches="tight")
+        plt.show()
+
+    return (plot_ros_scatter,)
+
+
+@app.cell
+def _(FIGURE, plot_ros_scatter, ros_salesDF):
+    plot_ros_scatter(ros_salesDF, FIGURE)
+    return
+
+
+@app.cell
 def _(INFLATION_2011, gpd, pd):
     def ros_volume_weighted(
         df: pd.DataFrame, simd_year: int, gdf: gpd.GeoDataFrame
@@ -1284,8 +1357,6 @@ def _(
     else:
         print("SIMD ROS joined GeoJSON found -- loading")
         simd_concat_df = gpd.read_file(f"{DATA_FEATURE}/simd_ros.geojson")
-
-    simd_concat_df
     return (simd_concat_df,)
 
 
@@ -1296,7 +1367,6 @@ def _(pd, simd_concat_df):
         simd_concat_df,
         columns=["Year_Range", "Funding_Status", "Council_Area"],
     ).drop(columns=["index"])
-    simd_concat_OHdf.head()
     return (simd_concat_OHdf,)
 
 
@@ -1305,9 +1375,7 @@ def generate_xvar(df, price_prefix="VW"):
     # Identifiers / geometry are never predictors. Total_Volume only exists in
     # the absolute frame, so drop only what is present (the diff frame omits it).
     drop_cols = [
-        col
-        for col in ["Council_Code", "Total_Volume", "geometry"]
-        if col in df.columns
+        col for col in ["Council_Code", "Total_Volume", "geometry"] if col in df.columns
     ]
 
     # Drop the price response columns - the raw "VW_*" set for the absolute
@@ -1363,9 +1431,7 @@ def _(graph, pd):
 
         lag_cols = [f"{col}_lag" for col in xvar_cols]
 
-        periods = (
-            [None] if period_col is None else list(concat_df[period_col].unique())
-        )
+        periods = [None] if period_col is None else list(concat_df[period_col].unique())
         merge_keys = [group_col] if period_col is None else [group_col, period_col]
 
         lag_frames = []
@@ -1408,8 +1474,6 @@ def _(calculate_combine_lag, pd, simd_concat_df):
         simd_spatial_df,
         columns=["Year_Range", "Funding_Status", "Council_Area"],
     ).drop(columns=["index"])
-
-    simd_spatial_OHdf.columns
     return (simd_spatial_OHdf,)
 
 
@@ -1646,10 +1710,12 @@ def _(simd_concat_OHdf, smf):
     # fixed-effect set. The earlier "+ Council_Area" referenced a column that
     # pd.get_dummies had already consumed, which raised a PatsyError.
     fe_ols_xvar = generate_xvar(simd_concat_OHdf)
-    fe_ols_xvar = [x for x in fe_ols_xvar if x not in ["Q('Predicted')", "Q('Residuals')", "Q('geom_wkt')"]]
-    formula_fe_ols = (
-        f"VW_Median_Price ~ {' + '.join(fe_ols_xvar)} - 1"
-    )
+    fe_ols_xvar = [
+        x
+        for x in fe_ols_xvar
+        if x not in ["Q('Predicted')", "Q('Residuals')", "Q('geom_wkt')"]
+    ]
+    formula_fe_ols = f"VW_Median_Price ~ {' + '.join(fe_ols_xvar)} - 1"
     fe_ols = smf.ols(formula_fe_ols, data=simd_concat_OHdf).fit()
     fe_ols.summary()
     return (fe_ols,)
@@ -1658,10 +1724,12 @@ def _(simd_concat_OHdf, smf):
 @app.cell
 def _(simd_spatial_OHdf, smf):
     fe_spareg_xvar = generate_xvar(simd_spatial_OHdf)
-    fe_spareg_xvar = [x for x in fe_spareg_xvar if x not in ["Q('Predicted')", "Q('Residuals')", "Q('geom_wkt')"]]
-    formula_fe_spareg = (
-        f"VW_Median_Price ~ {' + '.join(fe_spareg_xvar)} - 1"
-    )
+    fe_spareg_xvar = [
+        x
+        for x in fe_spareg_xvar
+        if x not in ["Q('Predicted')", "Q('Residuals')", "Q('geom_wkt')"]
+    ]
+    formula_fe_spareg = f"VW_Median_Price ~ {' + '.join(fe_spareg_xvar)} - 1"
     fe_spareg = smf.ols(formula_fe_spareg, data=simd_spatial_OHdf).fit()
     fe_spareg.summary()
     return (fe_spareg,)
@@ -1673,7 +1741,7 @@ def _(FIGURE, cx, pd, plt):
         # 1. Structure data with explicit string names for titles and column headers
         models_data = [
             ("Standard OLS", fe_ols, ols_gdf),
-            ("Spatial Regression", fe_spareg, spareg_gdf)
+            ("Spatial Regression", fe_spareg, spareg_gdf),
         ]
 
         # 2. Figure generation OUTSIDE the loop
@@ -1686,22 +1754,18 @@ def _(FIGURE, cx, pd, plt):
             # Extract and clean index
 
             fixed_effects = model.params.filter(like="Council_Area")
-            fixed_effects.index = (
-                fixed_effects.index
-                .str.replace(r"^Q\('(.*)'\)\[T\.True\]$", r"\1", regex=True)
-                .str.replace("Council_Area_", "", regex=False)
-            )
+            fixed_effects.index = fixed_effects.index.str.replace(
+                r"^Q\('(.*)'\)\[T\.True\]$", r"\1", regex=True
+            ).str.replace("Council_Area_", "", regex=False)
 
             max_effect = fixed_effects.abs().max()
 
             col_name = f"FE_{model_name.replace(' ', '_')}"
 
             # Forgot to de dummify
-            temp_df = gdf.copy() 
+            temp_df = gdf.copy()
             dummy_cols = [col for col in temp_df.columns if col.startswith(prefix)]
-            temp_df["Council_Area"] = pd.from_dummies(
-                temp_df[dummy_cols]
-            )
+            temp_df["Council_Area"] = pd.from_dummies(temp_df[dummy_cols])
             temp_df["Council_Area"] = temp_df["Council_Area"].str.replace(prefix, "")
 
             merged_gdf = temp_df.merge(
@@ -1712,13 +1776,13 @@ def _(FIGURE, cx, pd, plt):
             )
 
             merged_gdf.plot(
-                col_name, 
-                legend=True, 
-                vmin=-max_effect, 
-                vmax=max_effect, 
-                cmap="PRGn", 
+                col_name,
+                legend=True,
+                vmin=-max_effect,
+                vmax=max_effect,
+                cmap="PRGn",
                 ax=ax[idx],
-                alpha=0.7
+                alpha=0.7,
             )
 
             cx.add_basemap(ax[idx], source="CartoDB DarkMatter", crs=merged_gdf.crs)
@@ -1767,9 +1831,10 @@ def _(DIFF_PERIOD, pd):
             df_past = df[df["Year_Range"] == "2012-2015"]
             df_future = df[df["Year_Range"] == "2016-2019"]
 
-        target_cols = [
-            col for col in df_past.columns if col.startswith("weighted")
-        ] + ["VW_Mean_Price", "VW_Median_Price"]
+        target_cols = [col for col in df_past.columns if col.startswith("weighted")] + [
+            "VW_Mean_Price",
+            "VW_Median_Price",
+        ]
 
         diff_df = pd.merge(
             df_past,
@@ -1808,8 +1873,6 @@ def _(DATA_FEATURE, Path, calculate_ros_diff, gpd, pd, simd_concat_df):
             [DiffROS_1216, DiffROS_1620], axis=0, ignore_index=True
         )
         DiffROS_concat_df.to_file(f"{DATA_FEATURE}/diff_simd_ros.geojson")
-
-    DiffROS_concat_df
     return (DiffROS_concat_df,)
 
 
@@ -1832,7 +1895,6 @@ def _(DiffROS_concat_df, pd):
         DiffROS_concat_df,
         columns=["Funding_Status", "diff_range", "Council_Area"],
     )
-    DiffROS_OHdf.head()
     return (DiffROS_OHdf,)
 
 
@@ -1865,8 +1927,6 @@ def _(DiffROS_concat_df, calculate_combine_lag, pd):
         diff_spatial_df,
         columns=["Funding_Status", "diff_range", "Council_Area"],
     )
-
-    diff_spatial_OHdf.head()
     return (diff_spatial_OHdf,)
 
 
@@ -1906,17 +1966,17 @@ def _(FIGURE, diff_spatial_OHdf, ols_diff_lag, plot_ols_simd_ros):
     return
 
 
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    #### Diff Spatial Fixed Effects
-    """)
-    return
-
-
 @app.cell
 def _(DiffROS_OHdf, FIGURE, diff_spatial_OHdf, plot_sme_boxplots):
     plot_sme_boxplots(DiffROS_OHdf, diff_spatial_OHdf, figure_dir=FIGURE, name="diff")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    #### Spatial Fixed Effects
+    """)
     return
 
 
@@ -1985,6 +2045,11 @@ def _(mo):
     4. Spatial Regression with relative SIMD and ROS Funding Status
 
     ##### Absolute
+
+
+    > Residual is defined as Actual - Predicted
+    > Where overprediction is Actual < Predicted (negative residual) and underprediction is Actual > Predicted (positive residual)
+
     1. OLS with absolute SIMD and ROS Funding Status: \
     R2 = 0.938 \
     Adjusted R2 = 0.928 \
@@ -2000,7 +2065,9 @@ def _(mo):
     Top 3 SIMD lag variables, Health and Education are statistically signficant: Health_lag (3.406) (p=0.001), Education_lag (2.286) (p=0.023), Income_lag (1.419) \
     ROS Funding Status, All statistically significant: Mortgage Sales (-2.1) (p=0.037) > All properties (-2.226) (p=0.027) > Cash Sales (-2.569) (p=0.011) \
 
+    Spatial features suggests an addition of Aberdeenshire and Orkney Island for Median Price overprediction, while adding neighbouring councils of Renfrewshire, surrounding the Western Scottish central belt for underprediction.
 
+    This is confirmed by the Residual boxplot comparing the OLS and Spatial Regression models. Overpredicted councils generally have higher variances, they are clustered in the more afflent councils of Aberdeenshire, Edinburgh, and Eatst Lothian etc. Both at the tail end of council that deviate from the median, the spatial regression model has a higher variance when compared to the standard OLS. Suggesting that the spatial regression model is better at capturing the relationships for councils that are neither afflent nor deprived.
 
     ##### Relative
     3. OLS with relative SIMD and ROS Funding Status: \
@@ -2009,12 +2076,18 @@ def _(mo):
     Top 3 SIMD variables, Employment is statistically significant: Employment (3.323) (p=0.001), Health (1.290), Housing (-0.138) \
     ROS Funding Status, Mortgage and Cash Sales is statistically significant: Mortgage Sales (1.757) (p=0.081) > All properties (-1.002) > Cash Sales (-3.861) (p=0.000) \
 
+    Moran residuals for the relative OLS model is only significant for the underprediction Falkirk but insignficant for the rest.
+
     4. Spatial Regression with relative SIMD and ROS Funding Status: \
     R2 = 0.754 \
     Adjusted R2 = 0.676 \
     Top 3 SIMD variables, Employment is statistically significant: Employment (3.844) (p=0.000), Health (1.508), Education (-0.312) \
     Top 3 SIMD lag variables, Employment_lag, and Education_lag are statistically significant: Employment_lag (2.406) (p=0.017), Education_lag (1.792) (p=0.075), Health_lag (1.295) \
     ROS Funding Status, Mortgage is statistically significant: Mortgaage Sales (2.663) (p=0.009) > All properties (0.783) > Cash Sales (-1.164) \
+
+    Spatial features suggests an underprediction of change in price for much of Central East of Scotland while overprediction for the Highlands and Orkney.
+
+    When interpreting the residul boxplots the difference is interesting that only for the underpredicted right tail (affluent councils), the spatial regression model have higher variances than the OLS model. But for the overpredicted left tail (affluent council), the spatial regression model have slighly lower variance, but the effect was particularly pronounced for East Lothian.
 
     #### Interpretation:
     Overall, spatial models do have a slight improvements when compared to non spatial OLS. The first 2 models that fitted the absolute SIMD and ROS values to median price showed high positive correlation when compared to the latter 2 models which fitted the relative diff in SIMD and ROS values to diff in median price.
