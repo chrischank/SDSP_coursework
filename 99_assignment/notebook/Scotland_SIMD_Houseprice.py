@@ -1,7 +1,14 @@
 import marimo
 
-__generated_with = "0.23.9"
+__generated_with = "0.23.8"
 app = marimo.App()
+
+
+@app.cell
+def _():
+    import marimo as mo
+
+    return (mo,)
 
 
 @app.cell(hide_code=True)
@@ -17,8 +24,8 @@ def _():
     ###############################
     # Notebook for SDSP Assessment#
     # Maintainer: Christopher Chan#
-    # Version: 0.1.1              #
-    # Date: 2026-06-23            #
+    # Version: 0.1.2              #
+    # Date: 2026-06-26            #
     ###############################
 
     import re
@@ -116,6 +123,7 @@ def _(
     pd,
 ):
     DIFF_PERIOD = Literal["12-16", "16-20"]
+
 
     def simd_preprocessing(
         simd_geom_past: Path,
@@ -244,9 +252,7 @@ def _(
             # Each year spells council areas differently (underscores, "&" vs
             # "and", two renames). Canonicalise here so the dissolve key - and
             # every downstream cross-year merge - aligns all 32 areas.
-            simd_pastDF["Council_Area"] = simd_pastDF["Council_Area"].map(
-                COUNCIL_ALIGNMENT
-            )
+            simd_pastDF["Council_Area"] = simd_pastDF["Council_Area"].map(COUNCIL_ALIGNMENT)
             simd_futureDF["Council_Area"] = simd_futureDF["Council_Area"].map(
                 COUNCIL_ALIGNMENT
             )
@@ -309,9 +315,7 @@ def _(
             # Each year spells council areas differently (underscores, "&" vs
             # "and", two renames). Canonicalise here so the dissolve key - and
             # every downstream cross-year merge - aligns all 32 areas.
-            simd_pastDF["Council_Area"] = simd_pastDF["Council_Area"].map(
-                COUNCIL_ALIGNMENT
-            )
+            simd_pastDF["Council_Area"] = simd_pastDF["Council_Area"].map(COUNCIL_ALIGNMENT)
             simd_futureDF["Council_Area"] = simd_futureDF["Council_Area"].map(
                 COUNCIL_ALIGNMENT
             )
@@ -384,9 +388,7 @@ def _(DATA_INTERMEDIATE, DATA_RAW, Path, gpd, simd_preprocessing):
         simd_2016DF, simd_2020DF, DissolveSIMD_2016DF, DissolveSIMD_2020DF = (
             simd_preprocessing(
                 simd_geom_past=Path(f"{DATA_RAW}/simd2016_withgeog/sc_dz_11.shp"),
-                simd_data_past=Path(
-                    f"{DATA_RAW}/simd2016_withgeog/simd2016_withinds.csv"
-                ),
+                simd_data_past=Path(f"{DATA_RAW}/simd2016_withgeog/simd2016_withinds.csv"),
                 simd_geom_future=Path(f"{DATA_RAW}/simd2020_withgeog/sc_dz_11.shp"),
                 simd_data_future=Path(
                     f"{DATA_RAW}/simd2020_withgeog/simd2020_withinds.csv"
@@ -410,9 +412,7 @@ def _(DATA_INTERMEDIATE, DATA_RAW, Path, gpd, simd_preprocessing):
         )
 
     else:
-        print(
-            "SIMD data already exists - skip preprocessing and read from intermediate"
-        )
+        print("SIMD data already exists - skip preprocessing and read from intermediate")
         simd_2012DF = gpd.read_file(f"{DATA_INTERMEDIATE}/simd_2012.geojson")
         simd_2016DF = gpd.read_file(f"{DATA_INTERMEDIATE}/simd_2016.geojson")
         simd_2020DF = gpd.read_file(f"{DATA_INTERMEDIATE}/simd_2020.geojson")
@@ -437,55 +437,45 @@ def _(DATA_INTERMEDIATE, DATA_RAW, Path, gpd, simd_preprocessing):
 
 
 @app.cell
-def _(
-    DissolveSIMD_2012DF,
-    DissolveSIMD_2016DF,
-    DissolveSIMD_2020DF,
-    FIGURE,
-    cx,
-    plt,
-    simd_2012DF,
-    simd_2016DF,
-    simd_2020DF,
-):
-    fig, axes = plt.subplots(2, 3, figsize=(20, 20), sharex=True, sharey=True)
-    ax = axes.flatten()
-
-    plot_list = [
-        simd_2012DF,
-        simd_2016DF,
-        simd_2020DF,
-        DissolveSIMD_2012DF,
-        DissolveSIMD_2016DF,
-        DissolveSIMD_2020DF,
-    ]
-    proxydata_list = [
-        "Income_Domain_2012_Rank",
-        "Income_Domain_2016_Rank",
-        "Income_Domain_2020_Rank",
-        "weighted_Income_Domain_2012_Rank_decile",
-        "weighted_Income_Domain_2016_Rank_decile",
-        "weighted_Income_Domain_2020_Rank_decile",
-    ]
-    subtitles = [
-        "SIMD Income 2012",
-        "SIMD Income 2016",
-        "SIMD Income 2020",
-        "Dissolve Income 2012 (Weighted Decile)",
-        "Dissolve Income 2016 (Weighted Decile)",
-        "Dissolve Income 2020 (Weighted Decile)",
-    ]
-
-    for idx, (df, proxydata, titles) in enumerate(
-        zip(plot_list, proxydata_list, subtitles)
-    ):
-        df.plot(proxydata, ax=ax[idx], legend=True, cmap="Spectral", alpha=0.7)
-        ax[idx].set_title(titles)
-
-        cx.add_basemap(ax[idx], crs=df.crs, source="CartoDB DarkMatter")
-
-    plt.tight_layout()
-    fig.savefig(FIGURE / "simd_income_maps.png", dpi=150, bbox_inches="tight")
+def _():
+    # fig, axes = plt.subplots(2, 3, figsize=(20, 20), sharex=True, sharey=True)
+    # ax = axes.flatten()
+    #
+    # plot_list = [
+    #    simd_2012DF,
+    #    simd_2016DF,
+    #    simd_2020DF,
+    #    DissolveSIMD_2012DF,
+    #    DissolveSIMD_2016DF,
+    #    DissolveSIMD_2020DF,
+    # ]
+    # proxydata_list = [
+    #    "Income_Domain_2012_Rank",
+    #    "Income_Domain_2016_Rank",
+    #    "Income_Domain_2020_Rank",
+    #    "weighted_Income_Domain_2012_Rank_decile",
+    #    "weighted_Income_Domain_2016_Rank_decile",
+    #    "weighted_Income_Domain_2020_Rank_decile",
+    # ]
+    # subtitles = [
+    #    "SIMD Income 2012",
+    #    "SIMD Income 2016",
+    #    "SIMD Income 2020",
+    #    "Dissolve Income 2012 (Weighted Decile)",
+    #    "Dissolve Income 2016 (Weighted Decile)",
+    #    "Dissolve Income 2020 (Weighted Decile)",
+    # ]
+    #
+    # for idx, (df, proxydata, titles) in enumerate(
+    #    zip(plot_list, proxydata_list, subtitles)
+    # ):
+    #    df.plot(proxydata, ax=ax[idx], legend=True, cmap="Spectral", alpha=0.7)
+    #    ax[idx].set_title(titles)
+    #
+    #    cx.add_basemap(ax[idx], crs=df.crs, source="CartoDB DarkMatter")
+    #
+    # plt.tight_layout()
+    # fig.savefig(FIGURE / "simd_income_maps.png", dpi=150, bbox_inches="tight")
     # plt.show()
     return
 
@@ -629,20 +619,6 @@ def _(FIGURE, plot_k_elbow):
     k_2012 = plot_k_elbow(2012, dissolve=True, figure_dir=FIGURE)
     k_2016 = plot_k_elbow(2016, dissolve=True, figure_dir=FIGURE)
     k_2020 = plot_k_elbow(2020, dissolve=True, figure_dir=FIGURE)
-
-    k_2012
-    return k_2016, k_2020
-
-
-@app.cell
-def _(k_2016):
-    k_2016
-    return
-
-
-@app.cell
-def _(k_2020):
-    k_2020
     return
 
 
@@ -733,9 +709,7 @@ def _(
             domain_cols = [
                 col
                 for col in domain_df.columns
-                if col.startswith("diff")
-                and col.endswith("_Rank")
-                and col not in meta_cols
+                if col.startswith("diff") and col.endswith("_Rank") and col not in meta_cols
             ]
         else:
             domain_df = domain_df_dict[(year, dissolve, diff)]
@@ -750,9 +724,7 @@ def _(
         combi_w = combi_graph.transform("r")
 
         for idx, col in enumerate(domain_cols):
-            lisa_queen = esda.Moran_Local(
-                domain_df[col], contiguity_r, permutations=999
-            )
+            lisa_queen = esda.Moran_Local(domain_df[col], contiguity_r, permutations=999)
             lisa_knn3 = esda.Moran_Local(domain_df[col], knn3_r, permutations=999)
             lisa_combine = esda.Moran_Local(domain_df[col], combi_w, permutations=999)
             domain_df[f"combine_moran'sI_{col}"] = lisa_combine.Is
@@ -761,9 +733,7 @@ def _(
             domain_df[f"queen_cluster_{col}"] = lisa_queen.get_cluster_labels(
                 crit_value=0.1
             )
-            domain_df[f"knn3_cluster_{col}"] = lisa_knn3.get_cluster_labels(
-                crit_value=0.1
-            )
+            domain_df[f"knn3_cluster_{col}"] = lisa_knn3.get_cluster_labels(crit_value=0.1)
             domain_df[f"combine_cluster_{col}"] = lisa_combine.get_cluster_labels(
                 crit_value=0.1
             )
@@ -784,6 +754,7 @@ def _(moran_local):
 @app.cell
 def _(Literal, cx, plt, sns):
     GRAPH_TYPE = Literal["knn3", "queen", "combine"]
+
 
     def plot_lisa(
         graph_df: "gpd.GeoDataFrame",
@@ -859,9 +830,7 @@ def _(Literal, cx, plt, sns):
         )
 
         plt.tight_layout()
-        fig.savefig(
-            figure_dir / f"lisa_{method}_{name}.png", dpi=150, bbox_inches="tight"
-        )
+        fig.savefig(figure_dir / f"lisa_{method}_{name}.png", dpi=150, bbox_inches="tight")
         return fig
 
     return (plot_lisa,)
@@ -884,19 +853,6 @@ def _(
     combine2020_moran = plot_lisa(
         cluster_Dissolve2020, method="combine", name="dissolve_2020", figure_dir=FIGURE
     )
-    combine2012_moran
-    return combine2016_moran, combine2020_moran
-
-
-@app.cell
-def _(combine2016_moran):
-    combine2016_moran
-    return
-
-
-@app.cell
-def _(combine2020_moran):
-    combine2020_moran
     return
 
 
@@ -1037,6 +993,7 @@ def _(
     )
     simd_diffDFlong["domain"] = simd_diffDFlong["simd"].str.split("_").str[2]
 
+
     def plot_abs_diff(
         simd_mergeDFlong: pd.DataFrame, simd_diffDFlong: pd.DataFrame
     ) -> None:
@@ -1119,6 +1076,7 @@ def _(
         fig.savefig(FIGURE / "simd_abs_vs_diff.png", dpi=150, bbox_inches="tight")
         plt.show()
 
+
     plot_abs_diff(simd_mergeDFlong, simd_diffDFlong)
     return
 
@@ -1137,13 +1095,6 @@ def _(FIGURE, SIMDdiff_1216, SIMDdiff_1620, moran_local, plot_lisa):
     combinediff_1620moran = plot_lisa(
         diffcluster_SIMD1620, method="combine", name="diff_1620", figure_dir=FIGURE
     )
-    combinediff_1216moran
-    return (combinediff_1620moran,)
-
-
-@app.cell
-def _(combinediff_1620moran):
-    combinediff_1620moran
     return
 
 
@@ -1417,12 +1368,6 @@ def _(gpd, pd, ros_simd2012_df, ros_simd2016_df, ros_simd2020_df):
 
 
 @app.cell
-def _(ros_concat_df):
-    ros_concat_df.sample(8)
-    return
-
-
-@app.cell
 def _(cx, np, plt):
     # Lets plot and explore the volume weighted average price for different funding status
     def plot_house_price(
@@ -1454,8 +1399,7 @@ def _(cx, np, plt):
         for status in vw_gdf["Funding_Status"].unique():
             for year in vw_gdf["Year_Range"].unique():
                 filter_gdf = vw_gdf[
-                    (vw_gdf["Year_Range"] == year)
-                    & (vw_gdf["Funding_Status"] == status)
+                    (vw_gdf["Year_Range"] == year) & (vw_gdf["Funding_Status"] == status)
                 ]
                 filter_gdf.plot(
                     average,
@@ -1474,9 +1418,7 @@ def _(cx, np, plt):
                 idx += 1
 
         plt.tight_layout()
-        fig.savefig(
-            figure_dir / f"house_price_{average}.png", dpi=150, bbox_inches="tight"
-        )
+        fig.savefig(figure_dir / f"house_price_{average}.png", dpi=150, bbox_inches="tight")
         plt.show()
 
     return (plot_house_price,)
@@ -1564,6 +1506,12 @@ def _(DATA_FEATURE, gpd, pd, re):
         simd_ros_df.drop(columns=["geometry_x"], inplace=True)
         simd_ros_df.rename(columns={"geometry_y": "geometry"}, inplace=True)
 
+        # Dropping Funding Status == All Properties
+        simd_ros_df.drop(
+            simd_ros_df[simd_ros_df["Funding_Status"] == "All properties"].index,
+            inplace=True,
+        )
+
         simd_ros_gdf = gpd.GeoDataFrame(
             simd_ros_df, geometry="geometry", crs=simd_ros_df.crs
         )
@@ -1628,9 +1576,7 @@ def generate_xvar(df: "pd.DataFrame", price_prefix: str = "VW") -> list[str]:
     """
     # Identifiers / geometry are never predictors. Total_Volume only exists in
     # the absolute frame, so drop only what is present (the diff frame omits it).
-    drop_cols = [
-        col for col in ["Council_Code", "Total_Volume", "geometry"] if col in df.columns
-    ]
+    drop_cols = [col for col in ["Council_Code", "geometry"] if col in df.columns]
 
     # Drop the price response columns - the raw "VW_*" set for the absolute
     # model and the "diff_VW_*" set for the diff model (both the modelled median
@@ -1649,9 +1595,7 @@ def generate_xvar(df: "pd.DataFrame", price_prefix: str = "VW") -> list[str]:
 
 @app.cell
 def _(simd_concat_OHdf, smf):
-    formula_simd_ros = (
-        f"VW_Median_Price ~ {' + '.join(generate_xvar(simd_concat_OHdf))}"
-    )
+    formula_simd_ros = f"VW_Median_Price ~ {' + '.join(generate_xvar(simd_concat_OHdf))}"
     ols = smf.ols(formula_simd_ros, data=simd_concat_OHdf).fit()
     ols.summary()
     return (ols,)
@@ -1701,9 +1645,7 @@ def _(graph, pd):
         xvar_cols = [col for col in concat_df.columns if col.startswith(xvar_prefix)]
 
         base_geoms = (
-            concat_df.groupby(group_col)
-            .agg({"geometry": "first"})
-            .set_geometry("geometry")
+            concat_df.groupby(group_col).agg({"geometry": "first"}).set_geometry("geometry")
         )
         contiguity_graph = graph.Graph.build_contiguity(base_geoms)
         knn3_graph = graph.Graph.build_knn(base_geoms.centroid, k=3)
@@ -1717,9 +1659,7 @@ def _(graph, pd):
         lag_frames = []
         for period in periods:
             sub = (
-                concat_df
-                if period is None
-                else concat_df[concat_df[period_col] == period]
+                concat_df if period is None else concat_df[concat_df[period_col] == period]
             )
             agg_dict = {col: "first" for col in xvar_cols}
             agg_dict["geometry"] = "first"
@@ -1768,7 +1708,7 @@ def _(simd_spatial_OHdf, smf):
 
 
 @app.cell
-def _(cx, esda, graph, mpatches, pd, plt):
+def _(cx, esda, graph, mpatches, np, pd, plt):
     def plot_ols_simd_ros(
         ols_model: "RegressionResultsWrapper",
         OH_gdf: "gpd.GeoDataFrame",
@@ -1809,9 +1749,6 @@ def _(cx, esda, graph, mpatches, pd, plt):
         # Adding wkt for later join because I one-hot encoded the Council_Area
         OH_gdf["geom_wkt"] = OH_gdf.geometry.to_wkt()
 
-        price_vmin = min(OH_gdf[target].min(), OH_gdf["Predicted"].min())
-        price_vmax = max(OH_gdf[target].max(), OH_gdf["Predicted"].max())
-
         fig, axes = plt.subplots(1, 4, figsize=(25, 7))
         ax = axes.flatten()
 
@@ -1823,38 +1760,21 @@ def _(cx, esda, graph, mpatches, pd, plt):
             "Insignificant": "lightgrey",
         }
 
-        OH_gdf.plot(
-            target,
-            legend=True,
-            cmap="RdYlGn_r",
-            ax=ax[0],
-            alpha=0.7,
-            vmin=price_vmin,
-            vmax=price_vmax,
-        )
-        ax[0].set_title(f"Actual {target}")
-
-        OH_gdf.plot(
-            "Predicted",
-            legend=True,
-            cmap="RdYlGn_r",
-            ax=ax[1],
-            alpha=0.7,
-            vmin=price_vmin,
-            vmax=price_vmax,
-        )
-        ax[1].set_title(f"Predicted {target}")
-
-        OH_gdf.plot("Residuals", legend=True, cmap="RdBu", ax=ax[2], alpha=0.7)
-        ax[2].set_title("Residuals")
-
         # Since provided gdf has multiple duplicated geometries
-        # I first need to groupby aggregate the residuals and geometry
+        # I first need to groupby aggregate the target, Predicted, Residuals and geometry
+        # Using volume weighted mean for the Target, Predicted, and Residuals
+        # The absolute frame carries Total_Volume, so the duplicate rows (one per
+        # funding status) can be volume-weighted. calculate_ros_diff drops the
+        # volume columns, so the diff frame has no Total_Volume -- fall back to an
+        # unweighted mean there instead of raising KeyError.
+        vw_mean = lambda x: np.average(x, weights=OH_gdf.loc[x.index, "Total_Volume"])
         unique_geoms = (
             OH_gdf.groupby("geom_wkt")
             .agg(
                 {
-                    "Residuals": "mean",
+                    target: vw_mean,
+                    "Predicted": vw_mean,
+                    "Residuals": vw_mean,
                     "geometry": "first",
                 }
             )
@@ -1866,9 +1786,7 @@ def _(cx, esda, graph, mpatches, pd, plt):
         combi_graph = graph.Graph.union(contiguity_graph, knn3_graph)
         combi_w = combi_graph.transform("r")
 
-        resid_lisa = esda.Moran_Local(
-            unique_geoms["Residuals"], combi_w, permutations=999
-        )
+        resid_lisa = esda.Moran_Local(unique_geoms["Residuals"], combi_w, permutations=999)
         unique_geoms["combine_cluster_resid"] = resid_lisa.get_cluster_labels(
             crit_value=0.1
         )
@@ -1878,10 +1796,39 @@ def _(cx, esda, graph, mpatches, pd, plt):
             OH_gdf, unique_geoms[["combine_cluster_resid"]], on="geom_wkt", how="left"
         )
 
-        colors = OH_gdf["combine_cluster_resid"].map(color_map)
-        OH_gdf.plot(
-            "combine_cluster_resid", ax=ax[3], color=colors, legend=True, alpha=0.7
+        price_vmin = min(unique_geoms[target].min(), unique_geoms["Predicted"].min())
+        price_vmax = max(unique_geoms[target].max(), unique_geoms["Predicted"].max())
+
+        unique_geoms.plot(
+            target,
+            legend=True,
+            cmap="RdYlGn_r",
+            ax=ax[0],
+            alpha=0.7,
+            vmin=price_vmin,
+            vmax=price_vmax,
         )
+        ax[0].set_title(f"Actual {target}")
+
+        unique_geoms.plot(
+            "Predicted",
+            legend=True,
+            cmap="RdYlGn_r",
+            ax=ax[1],
+            alpha=0.7,
+            vmin=price_vmin,
+            vmax=price_vmax,
+        )
+        ax[1].set_title(f"Predicted {target}")
+
+        unique_geoms.plot("Residuals", legend=True, cmap="RdBu", ax=ax[2], alpha=0.7)
+        ax[2].set_title("Residuals")
+
+        # Colour from unique_geoms (one row per drawn geometry) so the colours line
+        # up with the cells. Building this from OH_gdf would be the wrong length and
+        # order (OH_gdf has one row per funding status) and mis-paint the clusters.
+        colors = unique_geoms["combine_cluster_resid"].map(color_map)
+        unique_geoms.plot(ax=ax[3], color=colors, legend=True, alpha=0.7)
         ax[3].set_title("Residuals Moran Cluster")
 
         legend_patches = [
@@ -1901,9 +1848,7 @@ def _(cx, esda, graph, mpatches, pd, plt):
 
         title_suffix = "(Spatial Regression)" if spatial else "(Standard OLS)"
         model_label = f"{name} " if name else ""
-        fig.suptitle(
-            f"{model_label}OLS Regression of SIMD on {target} - {title_suffix}"
-        )
+        fig.suptitle(f"{model_label}OLS Regression of SIMD on {target} - {title_suffix}")
 
         plt.tight_layout()
         stem = (
@@ -2188,9 +2133,7 @@ def _(mo):
 
 @app.cell
 def _(DIFF_PERIOD, pd):
-    def calculate_ros_diff(
-        df: "gpd.GeoDataFrame", diff: DIFF_PERIOD
-    ) -> "gpd.GeoDataFrame":
+    def calculate_ros_diff(df: "gpd.GeoDataFrame", diff: DIFF_PERIOD) -> "gpd.GeoDataFrame":
         """Compute the future-minus-past change in SIMD and ROS metrics.
 
         Selects the past and future year ranges for the requested period and
@@ -2227,8 +2170,14 @@ def _(DIFF_PERIOD, pd):
         diff_df = pd.merge(
             df_past,
             df_future,
-            on=["Council_Area", "Council_Code", "geometry", "Funding_Status"],
+            on=[
+                "Council_Area",
+                "Council_Code",
+                "geometry",
+                "Funding_Status",
+            ],
             suffixes=("_past", "_future"),
+            how="inner",
         )
 
         # future - past, matching the SIMD diff convention. SIMD ranks are
@@ -2238,6 +2187,7 @@ def _(DIFF_PERIOD, pd):
             diff_df["diff_" + col] = diff_df[col + "_future"] - diff_df[col + "_past"]
 
         diff_df["diff_range"] = diff
+        diff_df["Total_Volume"] = diff_df["Total_Volume_future"]
 
         cols_to_drop = diff_df.filter(regex=r"_past$|_future$").columns
         diff_df = diff_df.drop(columns=cols_to_drop)
@@ -2299,7 +2249,7 @@ def _(DiffROS_OHdf, smf):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    #### Diff OLS (Spatial)
+    #### Diff Spatial Regression
     """)
     return
 
@@ -2393,9 +2343,7 @@ def _(diff_spatial_OHdf, smf):
         for x in fe_diff_spareg_xvar
         if x not in ["Q('Predicted')", "Q('Residuals')", "Q('geom_wkt')"]
     ]
-    formula_fe_diff_spareg = (
-        f"diff_VW_Median_Price ~ {' + '.join(fe_diff_spareg_xvar)} - 1"
-    )
+    formula_fe_diff_spareg = f"diff_VW_Median_Price ~ {' + '.join(fe_diff_spareg_xvar)} - 1"
     fe_diff_spareg = smf.ols(formula_fe_diff_spareg, data=diff_spatial_OHdf).fit()
     fe_diff_spareg.summary()
     return (fe_diff_spareg,)
@@ -2488,3 +2436,4 @@ def _(mo):
 
 if __name__ == "__main__":
     app.run()
+
