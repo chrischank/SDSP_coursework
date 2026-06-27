@@ -34,7 +34,7 @@ directory must be `99_assignment/notebook/`:
 
 ```bash
 cd 99_assignment/notebook
-pixi run marimo edit Scotland_SIMD_Houseprice.ipynb   # marimo (how it was authored)
+pixi run marimo edit Scotland_SIMD_Houseprice.ipy   # marimo (how it was authored)
 # or
 pixi run jupyter lab Scotland_SIMD_Houseprice.ipynb   # plain JupyterLab
 ```
@@ -63,7 +63,7 @@ to disk as the pipeline runs.
 
 ```mermaid
 flowchart TD
-    subgraph RAW["data/01_raw — you provide"]
+    subgraph RAW["data/01_raw"]
         SIMD["SIMD 2012 / 2016 / 2020<br/>Data Zone shapefiles + indicator CSVs"]
         ROS["RoS sales workbook<br/>ros_all_stats_March_2026.xlsx (sheet C6)"]
         DICT["src/dictionary.py<br/>column maps · council alignment · inflation"]
